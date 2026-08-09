@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard | E-RAKSHAK Forensic Analyzer</title>
+  <meta name="description" content="E-RAKSHAK Forensic Intelligence Dashboard — Bank, CDR, IPDR dataset fusion & Sec 65B reporting.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css?v=23">
+</head>
+<body style="background: var(--ref-bg-app); overflow: hidden;">
+
+<!-- ════════════════════════════════════════════════════
+     COMMAND PALETTE
+════════════════════════════════════════════════════════ -->
+<div class="palette-scrim" id="palette-scrim" onclick="closePalette()"></div>
+<div class="palette" id="command-palette">
+  <div class="palette-header">
+    <i class="fa-solid fa-magnifying-glass palette-icon"></i>
+    <input type="text" id="palette-input" class="palette-input" placeholder="Search cases, suspects, evidence…" oninput="filterPalette(this.value)" autocomplete="off">
+    <kbd class="palette-esc">ESC</kbd>
+  </div>
+  <div class="palette-body" id="palette-body"></div>
+</div>
+
+<!-- ── AI COPILOT ───────────────────────────────────── -->
+<div class="copilot-scrim" id="copilot-scrim" onclick="closeCopilot()"></div>
+<aside class="copilot-panel" id="copilot-panel">
+  <div class="copilot-header">
+    <div class="copilot-title-row">
+      <span class="copilot-avatar"><i class="fa-solid fa-microchip"></i></span>
+      <div>
+        <div class="copilot-name">Investigation Copilot</div>
+        <div class="copilot-sub">Bank · CDR · IPDR AI assistant</div>
+      </div>
+    </div>
+    <button class="icon-btn" onclick="closeCopilot()"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+  <div class="copilot-messages" id="copilot-messages">
+    <div class="copilot-msg system">
+      <div class="msg-bubble">Hello. I have full access to the fused Bank + CDR + IPDR dataset. Ask me anything — temporal coincidences, money flow patterns, mule signatures, or draft a Sec 65B report section.</div>
+      <div class="msg-meta">Investigation Copilot · Just now</div>
+    </div>
+  </div>
+  <div class="copilot-input-row">
+    <input type="text" id="copilot-input" class="copilot-input" placeholder="e.g. show transfers within 10 min of a call to ENT-0037…" onkeydown="handleCopilotKey(event)">
+    <button class="copilot-send-btn" onclick="sendCopilotMessage()"><i class="fa-solid fa-paper-plane"></i></button>
+  </div>
+</aside>
+
+<!-- ── CASE SLIDE-OVER ──────────────────────────────── -->
+<div class="slideover-scrim" id="slideover-scrim" onclick="closeSlideOver()"></div>
+<aside class="slideover" id="case-slideover">
+  <div class="slideover-header">
+    <div>
+      <div class="slideover-case-id" id="so-case-id">CASE-2026-00412</div>
+      <div class="slideover-case-title" id="so-case-title">Loading…</div>
+    </div>
+    <button class="icon-btn" onclick="closeSlideOver()"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+  <div class="slideover-body" id="slideover-body"></div>
+</aside>
+
+<!-- ════════════════════════════════════════════════════
+     DASHBOARD SHELL
+════════════════════════════════════════════════════════ -->
+<div class="app-shell" id="app-shell" style="display:flex;">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo" onclick="exitDashboard()" style="cursor:pointer;" title="Return to Home Page">
+      <div class="logo-mark"><i class="fa-solid fa-shield-halved"></i></div>
+      <div class="logo-text">
+        <span class="logo-name">E-RAKSHAK</span>
+        <span class="logo-sub">ERH26_PS_03</span>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <span class="nav-section">Operations</span>
+      <a class="nav-item active" data-view="dashboard" onclick="switchView('dashboard',this)">
+        <i class="fa-solid fa-gauge-high"></i><span>Dashboard</span>
+      </a>
+      <a class="nav-item" data-view="upload" onclick="switchView('upload',this)">
+        <i class="fa-solid fa-cloud-arrow-up"></i><span>Upload Data</span>
+      </a>
+      <a class="nav-item" data-view="cases" onclick="switchView('cases',this)">
+        <i class="fa-solid fa-folder-open"></i><span>Cases</span>
+        <span class="nav-badge" id="badge-cases">5</span>
+      </a>
+      <a class="nav-item" data-view="poi" onclick="switchView('poi',this)">
+        <i class="fa-solid fa-user-secret"></i><span>Persons of Interest</span>
+      </a>
+      <span class="nav-section">Forensic Datasets</span>
+      <a class="nav-item" data-view="evidence" onclick="switchView('evidence',this)">
+        <i class="fa-solid fa-database"></i><span>Evidence Vault</span>
+      </a>
+      <a class="nav-item" data-view="reports" onclick="switchView('reports',this)">
+        <i class="fa-solid fa-file-lines"></i><span>Reports &amp; STR</span>
+      </a>
+      <span class="nav-section">Visualization</span>
+      <a class="nav-item" data-view="network" onclick="switchView('network',this)">
+        <i class="fa-solid fa-diagram-project"></i><span>Entity Graph</span>
+      </a>
+      <a class="nav-item" data-view="map" onclick="switchView('map',this)">
+        <i class="fa-solid fa-map-location-dot"></i><span>Surat Cell Tower Map</span>
+      </a>
+      <span class="nav-section">System</span>
+      <a class="nav-item" data-view="settings" onclick="switchView('settings',this)">
+        <i class="fa-solid fa-gear"></i><span>Settings &amp; Upload</span>
+      </a>
+      <a class="nav-item nav-item-exit" onclick="exitDashboard()" style="margin-top:auto;border-top:1px solid var(--border-dark);padding-top:12px;color:var(--orange);">
+        <i class="fa-solid fa-arrow-left"></i><span>Back to Home</span>
+      </a>
+    </nav>
+    <div class="sidebar-user">
+      <div class="user-avatar">SP</div>
+      <div class="user-info">
+        <div class="user-name">SP Mehta</div>
+        <div class="user-role">Senior Investigator · Surat</div>
+      </div>
+      <button class="icon-btn" onclick="toggleCopilot()" title="AI Copilot">
+        <i class="fa-solid fa-robot"></i>
+      </button>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main-wrapper">
+    <header class="topbar">
+      <div class="topbar-left" style="display:flex;align-items:center;gap:10px;">
+        <button class="btn btn-ghost btn-sm" onclick="exitDashboard()" title="Return to Landing Page">
+          <i class="fa-solid fa-house"></i> Home
+        </button>
+        <button class="search-btn" onclick="openPalette()" id="search-trigger">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <span>Search cases, suspects, transactions…</span>
+          <kbd>⌘K</kbd>
+        </button>
+      </div>
+      <div class="topbar-right">
+        <div class="status-pill" id="status-pill">
+          <span class="pulse-dot green"></span>
+          <span id="status-text">Pipeline Ready</span>
+        </div>
+        <button class="icon-btn notif-btn"><i class="fa-solid fa-bell"></i><span class="notif-badge">4</span></button>
+        <button class="icon-btn" onclick="toggleTheme()" id="theme-toggle-btn" title="Toggle Light / Dark Mode"><i class="fa-solid fa-sun"></i></button>
+        <button class="icon-btn" onclick="toggleCopilot()" title="AI Copilot"><i class="fa-solid fa-robot"></i></button>
+        <div class="topbar-avatar">SP</div>
+      </div>
+    </header>
+
+    <main class="main-content">
+
+      <!-- ══ DASHBOARD VIEW ══════════════════════════════ -->
+      <div class="view active" id="view-dashboard">
+        <div class="page-header">
+          <div>
+            <div class="breadcrumb">
+              <span>Operations</span><i class="fa-solid fa-chevron-right"></i><span>Dashboard</span>
+            </div>
+            <h1 class="page-title">Financial &amp; Telecom Intelligence Overview</h1>
+          </div>
+          <div class="page-actions">
+            <button class="btn btn-ghost btn-sm" onclick="openPipeline()">
+              <i class="fa-solid fa-play"></i> Run Pipeline
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="toggleCopilot()">
+              <i class="fa-solid fa-robot"></i> Ask Copilot
+            </button>
+          </div>
+        </div>
+
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-top">
+              <div class="kpi-icon orange"><i class="fa-solid fa-diagram-project"></i></div>
+              <span class="kpi-trend up"><i class="fa-solid fa-arrow-trend-up"></i> +141 new</span>
+            </div>
+            <div class="kpi-value" data-target="1521" id="kpi-entities">0</div>
+            <div class="kpi-label">Entities Resolved</div>
+            <div class="kpi-sub">From 2,372 Bank+CDR+IPDR events</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-top">
+              <div class="kpi-icon blue"><i class="fa-solid fa-folder-open"></i></div>
+              <span class="kpi-trend up"><i class="fa-solid fa-arrow-trend-up"></i> +3 today</span>
+            </div>
+            <div class="kpi-value" data-target="47" id="kpi-cases">0</div>
+            <div class="kpi-label">Active Cases</div>
+            <div class="kpi-sub">Across 3 Surat districts</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-top">
+              <div class="kpi-icon red"><i class="fa-solid fa-triangle-exclamation"></i></div>
+              <span class="kpi-trend danger"><i class="fa-solid fa-arrow-trend-up"></i> +2 critical</span>
+            </div>
+            <div class="kpi-value" data-target="5" id="kpi-critical">0</div>
+            <div class="kpi-label">HIGH / CRITICAL Entities</div>
+            <div class="kpi-sub">Rule-gated risk tier scoring</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-top">
+              <div class="kpi-icon green"><i class="fa-solid fa-circle-check"></i></div>
+              <span class="kpi-trend up"><i class="fa-solid fa-arrow-trend-up"></i> 13 firings</span>
+            </div>
+            <div class="kpi-value" data-target="16" id="kpi-resolved">0</div>
+            <div class="kpi-label">ML Anomaly Flags</div>
+            <div class="kpi-sub">IsolationForest · separate flag</div>
+          </div>
+          <div class="kpi-card kpi-card-accuracy" id="kpi-accuracy-card" title="Live self-verification against planted ground-truth fraud typologies. Recomputed on every pipeline run.">
+            <div class="kpi-top">
+              <div class="kpi-icon blue"><i class="fa-solid fa-crosshairs"></i></div>
+              <span class="live-label"><span class="pulse-dot green small"></span> Live</span>
+            </div>
+            <div class="kpi-value-row">
+              <div class="kpi-value" id="kpi-accuracy-recall">–%</div>
+              <span class="kpi-accuracy-sep">recall ·</span>
+              <div class="kpi-value" id="kpi-accuracy-precision">–%</div>
+              <span class="kpi-accuracy-sep">precision</span>
+            </div>
+            <div class="kpi-label">Detection Accuracy</div>
+            <div class="kpi-sub" id="kpi-accuracy-sub">Across <span id="kpi-accuracy-count">N</span> planted fraud typologies</div>
+          </div>
+        </div>
+
+        <div class="dash-grid">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Active Investigation Cases</div>
+              <button class="btn btn-ghost btn-sm" onclick="switchView('cases',document.querySelector('[data-view=cases]'))">
+                View all <i class="fa-solid fa-arrow-right"></i>
+              </button>
+            </div>
+            <table class="data-table">
+              <thead>
+                <tr><th>Case ID</th><th>Title</th><th>Status</th><th>Risk</th><th>Officer</th></tr>
+              </thead>
+              <tbody id="dash-case-tbody"></tbody>
+            </table>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Pipeline Activity</div>
+              <span class="live-label"><span class="pulse-dot green small"></span> Live</span>
+            </div>
+            <div class="timeline" id="activity-feed"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Rule Engine — Last Pipeline Run</div>
+            <span class="tag tag-orange">7 Rules · 13 Firings · 10 Entities Flagged</span>
+          </div>
+          <div class="rule-grid" id="rule-grid"></div>
+        </div>
+      </div>
+
+      <!-- ══ UPLOAD DATA VIEW (OPERATIONS) ═════════════════ -->
+      <div class="view" id="view-upload">
+        <div class="page-header">
+          <div>
+            <div class="breadcrumb"><span>Operations</span><i class="fa-solid fa-chevron-right"></i><span>Upload Data</span></div>
+            <h1 class="page-title">Multi-Source Ingestion &amp; Dataset Fusion</h1>
+          </div>
+          <div class="page-actions">
+            <button class="btn btn-ghost btn-sm" onclick="clearAllUploads()">
+              <i class="fa-solid fa-trash-can"></i> Clear All
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="openPipeline()">
+              <i class="fa-solid fa-play"></i> Run Pipeline &amp; Fuse Datasets
+            </button>
+          </div>
+        </div>
+
+        <div class="upload-options-grid">
+          
+          <!-- Option 1: CDR -->
+          <div class="card upload-card">
+            <div class="card-header">
+              <div class="card-title"><i class="fa-solid fa-phone-volume" style="color:var(--orange);margin-right:8px;"></i> 1. CDR (Call Detail Records)</div>
+              <span class="tag tag-orange">Telecom Logs</span>
+            </div>
+            <div class="card-body" style="padding:16px 20px;">
+              <p class="upload-desc" style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">Upload CDR exports from Vodafone, Airtel, Jio, BSNL (.csv, .xlsx, .txt)</p>
+              <div class="upload-zone" id="zone-cdr" onclick="document.getElementById('input-cdr').click()" style="padding:24px 16px;margin:0;">
+                <i class="fa-solid fa-phone upload-icon" style="font-size:26px;"></i>
+                <div class="upload-title" style="font-size:13px;">Drop CDR file or click to browse</div>
+                <div class="upload-sub" style="font-size:11px;">Caller, callee, timestamp, IMEI, tower location</div>
+                <input type="file" id="input-cdr" accept=".csv,.xlsx,.xls,.txt" multiple style="display:none;" onchange="handleBucketFiles('cdr', this.files)">
+              </div>
+              <ul class="bucket-file-list" id="list-cdr" style="list-style:none;margin-top:10px;display:flex;flex-direction:column;gap:6px;"></ul>
+            </div>
+          </div>
+
+          <!-- Option 2: IPDR -->
+          <div class="card upload-card">
+            <div class="card-header">
+              <div class="card-title"><i class="fa-solid fa-network-wired" style="color:#3D7CFF;margin-right:8px;"></i> 2. IPDR (IP Session Logs)</div>
+              <span class="tag tag-blue">Network Data</span>
+            </div>
+            <div class="card-body" style="padding:16px 20px;">
+              <p class="upload-desc" style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">Upload IPDR session logs &amp; cell tower IP data (.csv, .xlsx, .txt)</p>
+              <div class="upload-zone" id="zone-ipdr" onclick="document.getElementById('input-ipdr').click()" style="padding:24px 16px;margin:0;">
+                <i class="fa-solid fa-wifi upload-icon" style="font-size:26px;color:#3D7CFF;"></i>
+                <div class="upload-title" style="font-size:13px;">Drop IPDR file or click to browse</div>
+                <div class="upload-sub" style="font-size:11px;">Source IP, dest IP, port, timestamp, duration</div>
+                <input type="file" id="input-ipdr" accept=".csv,.xlsx,.xls,.txt" multiple style="display:none;" onchange="handleBucketFiles('ipdr', this.files)">
+              </div>
+              <ul class="bucket-file-list" id="list-ipdr" style="list-style:none;margin-top:10px;display:flex;flex-direction:column;gap:6px;"></ul>
+            </div>
+          </div>
+
+          <!-- Option 3: Bank Details (Any Format) -->
+          <div class="card upload-card">
+            <div class="card-header">
+              <div class="card-title"><i class="fa-solid fa-building-columns" style="color:#2ECC71;margin-right:8px;"></i> 3. Bank Details (Any Format)</div>
+              <span class="tag tag-green">Financial Statements</span>
+            </div>
+            <div class="card-body" style="padding:16px 20px;">
+              <p class="upload-desc" style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">Upload Bank statements in ANY format — SBI, HDFC, ICICI, Axis (.xlsx, .csv, .pdf)</p>
+              <div class="upload-zone" id="zone-bank" onclick="document.getElementById('input-bank').click()" style="padding:24px 16px;margin:0;">
+                <i class="fa-solid fa-file-invoice-dollar upload-icon" style="font-size:26px;color:#2ECC71;"></i>
+                <div class="upload-title" style="font-size:13px;">Drop Bank Statements or click to browse</div>
+                <div class="upload-sub" style="font-size:11px;">Auto-parses narration, UPI IDs, amounts, balances</div>
+                <input type="file" id="input-bank" accept=".xlsx,.xls,.csv,.pdf" multiple style="display:none;" onchange="handleBucketFiles('bank', this.files)">
+              </div>
+              <ul class="bucket-file-list" id="list-bank" style="list-style:none;margin-top:10px;display:flex;flex-direction:column;gap:6px;"></ul>
+            </div>
+          </div>
+
+          <!-- Option 4: Other Case Documents -->
+          <div class="card upload-card">
+            <div class="card-header">
+              <div class="card-title"><i class="fa-solid fa-folder-tree" style="color:#a78bfa;margin-right:8px;"></i> 4. Other Documents &amp; Artifacts</div>
+              <span class="tag" style="background:rgba(167,139,250,0.1);color:#a78bfa;border:1px solid rgba(167,139,250,0.3);">Case Files</span>
+            </div>
+            <div class="card-body" style="padding:16px 20px;">
+              <p class="upload-desc" style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">Upload FIR copies, KYC documents, witness statements, disk images (.pdf, .docx, .zip, .json)</p>
+              <div class="upload-zone" id="zone-other" onclick="document.getElementById('input-other').click()" style="padding:24px 16px;margin:0;">
+                <i class="fa-solid fa-file-shield upload-icon" style="font-size:26px;color:#a78bfa;"></i>
+                <div class="upload-title" style="font-size:13px;">Drop Case Documents or click to browse</div>
+                <div class="upload-sub" style="font-size:11px;">FIR pdf, KYC proofs, witness notes, images</div>
+                <input type="file" id="input-other" multiple style="display:none;" onchange="handleBucketFiles('other', this.files)">
+              </div>
+              <ul class="bucket-file-list" id="list-other" style="list-style:none;margin-top:10px;display:flex;flex-direction:column;gap:6px;"></ul>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="card" style="margin-top:16px;padding:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+          <div>
+            <div style="font-size:15px;font-weight:700;color:var(--text-primary);">Ready to Ingest &amp; Correlate?</div>
+            <div style="font-size:12.5px;color:var(--text-muted);margin-top:2px;" id="upload-summary-text">0 files staged across 4 categories. Ready for automated parsing and entity fusion.</div>
+          </div>
+          <button class="btn btn-primary" onclick="openPipeline()" style="padding:10px 24px;font-size:14px;">
+            <i class="fa-solid fa-play"></i> Run Pipeline &amp; Fuse Datasets
+          </button>
+        </div>
+      </div>
+
+      <!-- ══ CASES VIEW ════════════════════════════════════ -->
+      <div class="view" id="view-cases">
+        <div class="page-header">
+          <div>
+            <div class="breadcrumb"><span>Operations</span><i class="fa-solid fa-chevron-right"></i><span>Cases</span></div>
+            <h1 class="page-title">Case Registry — Surat Cybercrime Unit</h1>
+          </div>
+          <div class="page-actions">
+            <div class="filter-group" id="case-filters">
+              <button class="filter-btn active" data-filter="all">All</button>
+              <button class="filter-btn" data-filter="critical">Critical</button>
+              <button class="filter-btn" data-filter="active">Active</button>
+              <button class="filter-btn" data-filter="escalated">Escalated</button>
+              <button class="filter-btn" data-filter="review">Under Review</button>
+              <button class="filter-btn" data-filter="closed">Closed</button>
+            </div>
+            <div class="search-inline">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" placeholder="Filter cases…" oninput="filterCaseTable(this.value)">
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Investigation Registry</div>
+            <span class="tag tag-orange" id="case-count">8 cases</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Case ID</th><th>Title</th><th>Status</th><th>Risk Score</th>
+                <th>Entities</th><th>Assigned Officer</th><th>Last Activity</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="full-case-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ══ PERSONS OF INTEREST VIEW ═════════════════════ -->
+      <div class="view" id="view-poi">
+        <div class="page-header">
+          <div>
+            <div class="breadcrumb"><span>Operations</span><i class="fa-solid fa-chevron-right"></i><span>Persons of Interest</span></div>
+            <h1 class="page-title">Resolved Entities &amp; Suspect Registry</h1>
+          </div>
+          <div class="page-actions">
+            <button class="btn btn-ghost btn-sm" onclick="switchView('network')">
+              <i class="fa-solid fa-diagram-project"></i> View Graph
+            </button>
+          </div>
+        </div>
+
+        <div class="poi-grid" id="poi-grid"></div>
+      </div>
+
+      <!-- ══ EVIDENCE VAULT VIEW ═══════════════════════════ -->
+      <div class="view" id="view-evidence">
+        <div class="page-header">
+          <div>
+            <div class="breadcrumb"><span>Forensic Datasets</span><i class="fa-solid fa-chevron-right"></i><span>Evidence Vault</span></div>
+            <h1 class="page-title">Ingested Files &amp; Rule Firing Trace</h1>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">SHA-256 Verified Source Evidence Files</div>
+            <span class="tag tag-green"><i class="fa-solid fa-lock"></i> Chain of Custody Verified</span>
+          </div>
+          <div class="evidence-list" id="evidence-list"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Decision Trace Log (decision_trace.jsonl)</div>
+            <span class="tag tag-orange">Deterministic Rule Firings</span>
+          </div>
+          <div class="trace-list" id="trace-list"></div>
+        </div>
+      </div>
+
+      <!-- ══ REPORTS & STR VIEW ════════════════════════════ -->
+      <div class="view" id="view-reports">
+        <div class="page-header">
+          <div>
+            <div class="breadcrumb"><span>Forensic Datasets</span><i class="fa-solid fa-chevron-right"></i><span>Reports &amp; STR</span></div>
+            <h1 class="page-title">Forensic Package &amp; Sec 65B Export</h1>
+          </div>
+        </div>
+
+        <div class="reports-grid" id="reports-grid"></div>
+      </div>
+
+      <!-- ══ ENTITY NETWORK VIEW ═══════════════════════════ -->
+      <div class="view" id="view-network">
+        <div class="page-header">
+          <div>
+            <div class="breadcrumb"><span>Visualization</span><i class="fa-solid fa-chevron-right"></i><span>Entity Graph</span></div>
+            <h1 class="page-title">Identity Resolution Network — Vis.js</h1>
+          </div>
+          <div class="page-actions">
+            <div class="filter-group">
+              <button class="filter-btn active" onclick="applyNetworkFilter('all',this)">All Nodes</button>
+              <button class="filter-btn" onclick="applyNetworkFilter('critical',this)">Critical Only</button>
+              <button class="filter-btn" onclick="applyNetworkFilter('phone',this)">Phones</button>
+              <button class="filter-btn" onclick="applyNetworkFilter('account',this)">Bank Accounts</button>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="btn-reset-network">
+              <i class="fa-solid fa-rotate-right"></i> Reset View
+            </button>
+          </div>
+        </div>
+
+        <div class="network-layout">
+          <div class="card network-card">
+            <div class="network-toolbar">
+              <div class="search-inline">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="text" id="network-search-input" placeholder="Search nodes (e.g. ENT-0037, SBI-xxxx4421)…">
+              </div>
+              <div class="node-legend">
+                <span class="legend-item"><span class="dot red"></span> Critical Entity</span>
+                <span class="legend-item"><span class="dot orange"></span> High Entity</span>
+                <span class="legend-item"><span class="dot blue"></span> Phone</span>
+                <span class="legend-item"><span class="dot purple"></span> Account</span>
+              </div>
+            </div>
+            <div class="network-canvas" id="identity-network"></div>
+          </div>
+
+          <div class="card network-inspector" id="network-inspector">
+            <div class="inspector-header">
+              <div class="inspector-title"><i class="fa-solid fa-circle-info"></i> Entity Inspector</div>
+            </div>
+            <div class="inspector-body" id="inspector-body">
+              <p class="inspector-hint"><i class="fa-solid fa-hand-pointer"></i> Click a node to inspect entity details.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ CELL TOWER MAP VIEW ═══════════════════════════ -->
+      <div class="view" id="view-map">
+        <div class="page-header">
+          <div>
+            <div class="breadcrumb"><span>Visualization</span><i class="fa-solid fa-chevron-right"></i><span>Surat Cell Tower Map</span></div>
+            <h1 class="page-title">Geo-location &amp; Cell Tower Spatial Analysis</h1>
+          </div>
+        </div>
+
+        <div class="card" style="padding:0;overflow:hidden;">
+          <div id="surat-map" class="leaflet-map" style="height:620px;width:100%;"></div>
+        </div>
+      </div>
+
+      <!-- ══ SETTINGS VIEW ═════════════════════════════════ -->
+      <div class="view" id="view-settings">
+        <div class="page-header">
+          <div>
+            <div class="breadcrumb"><span>System</span><i class="fa-solid fa-chevron-right"></i><span>Settings &amp; Upload</span></div>
+            <h1 class="page-title">Pipeline Configuration &amp; Manual Data Ingestion</h1>
+          </div>
+        </div>
+
+        <div class="settings-grid">
+          <div class="card">
+            <div class="card-header"><div class="card-title">Analysis Mode</div></div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Theme Mode</div>
+                <div class="setting-sub" id="theme-mode-label">Dark Mode</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="theme-switch-checkbox" onchange="toggleTheme()">
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              </label>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Demo Dataset vs Custom Upload</div>
+                <div class="setting-sub">Switch between pre-loaded Surat mock data and custom ingested files</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="mode-toggle">
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              </label>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label" id="mode-label">Demo Mode — Surat Dataset</div>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="openPipeline()">
+                <i class="fa-solid fa-play"></i> Run Pipeline
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div class="card-title">Upload Forensic Logs</div></div>
+            <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+              <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+              <div class="upload-title">Drop files or click to browse</div>
+              <div class="upload-sub">Bank statements (.xlsx, .csv, .pdf) · CDR · IPDR</div>
+              <input type="file" id="file-input" multiple style="display:none;">
+            </div>
+            <div id="file-list-panel" style="display:none;margin-top:14px;">
+              <ul class="file-list" id="uploaded-files-list"></ul>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div class="card-title">About E-RAKSHAK</div></div>
+            <div class="about-grid">
+              <div class="about-row"><span class="about-key">Problem ID</span><span class="about-val">ERH26_PS_03</span></div>
+              <div class="about-row"><span class="about-key">Domain</span><span class="about-val">Big Data &amp; Analytics</span></div>
+              <div class="about-row"><span class="about-key">Version</span><span class="about-val mono">v4.0.0</span></div>
+              <div class="about-row"><span class="about-key">Rules</span><span class="about-val">7 deterministic forensic rules</span></div>
+              <div class="about-row"><span class="about-key">ML</span><span class="about-val">IsolationForest (scikit-learn)</span></div>
+              <div class="about-row"><span class="about-key">Compliance</span><span class="about-val">Sec 65B BSA · NCRP L1→L4</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- Pipeline modal -->
+<div class="pipeline-overlay" id="pipeline-overlay" style="display:none;">
+  <div class="pipeline-modal">
+    <div class="pipeline-icon"><i class="fa-solid fa-gears fa-spin"></i></div>
+    <div class="pipeline-title">Running Analysis Pipeline</div>
+    <div class="pipeline-steps" id="pipeline-steps"></div>
+    <div class="pipeline-bar-wrap"><div class="pipeline-bar" id="pipeline-bar"></div></div>
+    <button class="btn btn-ghost btn-sm" onclick="closePipelineOverlay()" style="margin-top:16px;">Dismiss</button>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     STAGGERED DUAL SWEEP SVG PAGE TRANSITION OVERLAY
+════════════════════════════════════════════════════════ -->
+<div id="dual-sweep-overlay" class="sweep-overlay">
+  <svg
+    width="100%"
+    height="100%"
+    viewBox="0 0 1316 664"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    class="sweep-svg"
+    preserveAspectRatio="xMidYMid slice"
+  >
+    <!-- Layer 1: Background Wave Path (#F4CABB) -->
+    <path
+      id="sweep-path-bg"
+      d="M13.4746 291.27C13.4746 291.27 100.646 -18.6724 255.617 16.8418C410.588 52.356 61.0296 431.197 233.017 546.326C431.659 679.299 444.494 21.0125 652.73 100.784C860.967 180.556 468.663 430.709 617.216 546.326C765.769 661.944 819.097 48.2722 988.501 120.156C1174.21 198.957 809.424 543.841 988.501 636.726C1189.37 740.915 1301.67 149.213 1301.67 149.213"
+      stroke="#F4CABB"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <!-- Layer 2: Foreground Wave Path (#2ECC71) -->
+    <path
+      id="sweep-path-fg"
+      d="M13.4746 291.27C13.4746 291.27 100.646 -18.6724 255.617 16.8418C410.588 52.356 61.0296 431.197 233.017 546.326C431.659 679.299 444.494 21.0125 652.73 100.784C860.967 180.556 468.663 430.709 617.216 546.326C765.769 661.944 819.097 48.2722 988.501 120.156C1174.21 198.957 809.424 543.841 988.501 636.726C1189.37 740.915 1301.67 149.213 1301.67 149.213"
+      stroke="#2ECC71"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </svg>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.3/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<script src="app.js?v=25"></script>
+</body>
+</html>

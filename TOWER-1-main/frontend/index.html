@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>E-RAKSHAK | AI-Powered Financial & Telecom Dataset Analyzer</title>
+  <meta name="description" content="Bank · CDR · IPDR fusion for cybercrime investigation. Automated multi-format ingestion, entity resolution, anomaly detection and Sec 65B forensic reporting.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css?v=21">
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════
+     STAGGERED DUAL SWEEP SVG PAGE TRANSITION OVERLAY
+════════════════════════════════════════════════════════ -->
+<div id="dual-sweep-overlay" class="sweep-overlay">
+  <svg
+    width="100%"
+    height="100%"
+    viewBox="0 0 1316 664"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    class="sweep-svg"
+    preserveAspectRatio="xMidYMid slice"
+  >
+    <!-- Layer 1: Background Wave Path (#F4CABB) -->
+    <path
+      id="sweep-path-bg"
+      d="M13.4746 291.27C13.4746 291.27 100.646 -18.6724 255.617 16.8418C410.588 52.356 61.0296 431.197 233.017 546.326C431.659 679.299 444.494 21.0125 652.73 100.784C860.967 180.556 468.663 430.709 617.216 546.326C765.769 661.944 819.097 48.2722 988.501 120.156C1174.21 198.957 809.424 543.841 988.501 636.726C1189.37 740.915 1301.67 149.213 1301.67 149.213"
+      stroke="#F4CABB"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <!-- Layer 2: Foreground Wave Path (#2ECC71) -->
+    <path
+      id="sweep-path-fg"
+      d="M13.4746 291.27C13.4746 291.27 100.646 -18.6724 255.617 16.8418C410.588 52.356 61.0296 431.197 233.017 546.326C431.659 679.299 444.494 21.0125 652.73 100.784C860.967 180.556 468.663 430.709 617.216 546.326C765.769 661.944 819.097 48.2722 988.501 120.156C1174.21 198.957 809.424 543.841 988.501 636.726C1189.37 740.915 1301.67 149.213 1301.67 149.213"
+      stroke="#2ECC71"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </svg>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     LANDING PAGE
+════════════════════════════════════════════════════════ -->
+<div id="landing-page">
+
+  <!-- ── NAV ─────────────────────────────────────────── -->
+  <nav class="land-nav">
+    <div class="land-logo">
+      <i class="fa-solid fa-shield-halved land-logo-icon"></i>
+      <span class="land-logo-name">E-RAKSHAK</span>
+    </div>
+    <div class="land-nav-links">
+      <a href="#how-it-works" class="land-nav-link">How it Works</a>
+      <a href="#workflow" class="land-nav-link">Features</a>
+      <a href="#stack" class="land-nav-link">Tech Stack</a>
+      <button class="land-nav-cta" onclick="enterDashboard()">Open Dashboard →</button>
+    </div>
+  </nav>
+
+  <!-- ── ZAJNO HERO REVEAL ────────────────────────────── -->
+  <div class="zajno-container" id="hero">
+    <section class="zajno-hero">
+
+      <div class="zajno-header">
+        <h1 class="zajno-title">E-RAKSHAK</h1>
+      </div>
+
+      <!-- Subtitle & CTA row below the title -->
+      <div class="zajno-hero-bottom">
+        <div class="zajno-hero-bottom-left">
+          <p class="zajno-sub">AI-Powered Financial &amp; Telecom Dataset Analyzer</p>
+          <p class="zajno-tagline">Bank · CDR · IPDR fusion for <strong>Intelligence-led Cybercrime Investigation</strong></p>
+        </div>
+        <div class="zajno-hero-bottom-right">
+          <button class="hero-cta zajno-cta" onclick="enterDashboard()">
+            Open Dashboard <i class="fa-solid fa-arrow-right"></i>
+          </button>
+          <a href="#how-it-works" class="hero-link zajno-scroll-link">See how it works ↓</a>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ── METRICS STRIP ─────────────────────────────────── -->
+  <div class="metrics-strip">
+    <div class="metric-item">
+      <span class="metric-num">2,372</span>
+      <span class="metric-label">Events Ingested</span>
+    </div>
+    <div class="metric-sep"></div>
+    <div class="metric-item">
+      <span class="metric-num">1,521</span>
+      <span class="metric-label">Entities Resolved</span>
+    </div>
+    <div class="metric-sep"></div>
+    <div class="metric-item">
+      <span class="metric-num">7</span>
+      <span class="metric-label">Forensic Rules</span>
+    </div>
+    <div class="metric-sep"></div>
+    <div class="metric-item">
+      <span class="metric-num">13</span>
+      <span class="metric-label">Rule Firings</span>
+    </div>
+    <div class="metric-sep"></div>
+    <div class="metric-item">
+      <span class="metric-num">80%</span>
+      <span class="metric-label">Detection Recall</span>
+    </div>
+  </div>
+
+  <!-- ── 5 STAGES OF INVESTIGATION WORKFLOW (HAPPLY STICKY SHOWCASE) ──── -->
+  <section class="b-showcase" id="how-it-works">
+    <ul class="b-showcase__list">
+
+      <!-- STAGE 1: MULTI-FORMAT INGESTION -->
+      <li class="b-showcase__li" style="z-index: 5;">
+        <div class="b-showcase__item" style="--pcolor: #a86fb2; --pbgcolor: #E2CDD9; --ptext: #111111;">
+          <p class="b-showcase__item__topbar">01 / Stage I · Multi-Format Ingestion</p>
+          
+          <div class="b-showcase__item__holder">
+            <!-- Left Column: Title & Terminal Visual -->
+            <div class="b-showcase__item__content">
+              <h2 class="main-title">
+                Multi-Format<br>
+                <span class="highlight-word">Data Ingestion</span>
+              </h2>
+
+              <div class="media-container">
+                <div class="wf-terminal">
+                  <div class="wt-line"><span class="wt-arrow">▶</span><span class="wt-cmd">parse bank_sbi_rajesh.xlsx</span><span class="wt-ok">✓ 847 rows</span></div>
+                  <div class="wt-line"><span class="wt-arrow">▶</span><span class="wt-cmd">parse bank_hdfc_priya.csv</span><span class="wt-ok">✓ 612 rows</span></div>
+                  <div class="wt-line"><span class="wt-arrow">▶</span><span class="wt-cmd">parse bank_icici.pdf</span><span class="wt-ok">✓ 394 rows · pdfplumber</span></div>
+                  <div class="wt-line"><span class="wt-arrow">▶</span><span class="wt-cmd">parse cdr_vodafone.csv</span><span class="wt-ok">✓ 1,135 call records</span></div>
+                  <div class="wt-line"><span class="wt-arrow">▶</span><span class="wt-cmd">parse ipdr_bsnl.csv</span><span class="wt-ok">✓ 607 IP sessions</span></div>
+                  <div class="wt-hash"># Total: 2,372 events · SHA-256 verified · Canonical model unified</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Column: Info & Specs -->
+            <div class="b-showcase__item__info">
+              <div class="info-header">
+                <span class="slide-indicator">01/05</span>
+                <p class="info-description">
+                  Automated multi-format parser ingests heterogeneous bank statements (SBI XLSX, HDFC CSV, ICICI PDF), telecom CDR call logs, and IPDR internet sessions into a unified canonical model.
+                </p>
+              </div>
+
+              <div class="info-specs">
+                <div class="spec-group">
+                  <span class="spec-label">Key Capability:</span>
+                  <p class="spec-value">Schema auto-detection &amp; SHA-256 audit hashing</p>
+                </div>
+
+                <div class="spec-group">
+                  <span class="spec-label">Supported Formats:</span>
+                  <ul class="spec-list">
+                    <li>✓ Excel XLSX (OpenPyXL engine)</li>
+                    <li>✓ CSV Structured Statements</li>
+                    <li>✓ Native PDF (pdfplumber layout extraction)</li>
+                    <li>✓ CDR &amp; IPDR Cellular / IP Session Exports</li>
+                  </ul>
+                </div>
+
+                <div class="action-buttons">
+                  <button class="btn-primary" onclick="enterDashboard()">Open Dashboard →</button>
+                  <a href="#workflow" class="btn-secondary">View Features</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </li>
+
+      <!-- STAGE 2: CROSS-DATASET ENTITY FUSION -->
+      <li class="b-showcase__li" style="z-index: 4;">
+        <div class="b-showcase__item" style="--pcolor: #5c7fba; --pbgcolor: #D1DAE0; --ptext: #111111;">
+          <p class="b-showcase__item__topbar">02 / Stage II · Cross-Dataset Entity Fusion</p>
+          
+          <div class="b-showcase__item__holder">
+            <div class="b-showcase__item__content">
+              <h2 class="main-title">
+                Cross-Dataset<br>
+                <span class="highlight-word">Entity Resolution</span>
+              </h2>
+
+              <div class="media-container">
+                <div class="wf-graph-visual">
+                  <div class="wg-node center"><i class="fa-solid fa-user-secret"></i><span>ENT-0037</span></div>
+                  <div class="wg-spoke" style="--angle:-90deg; --len:135px;">
+                    <div class="wg-node leaf" data-type="phone"><i class="fa-solid fa-phone"></i><span>9876…</span></div>
+                  </div>
+                  <div class="wg-spoke" style="--angle:-18deg; --len:195px;">
+                    <div class="wg-node leaf" data-type="bank"><i class="fa-solid fa-building-columns"></i><span>SBI…</span></div>
+                  </div>
+                  <div class="wg-spoke" style="--angle:54deg; --len:195px;">
+                    <div class="wg-node leaf" data-type="imei"><i class="fa-solid fa-mobile"></i><span>352x…</span></div>
+                  </div>
+                  <div class="wg-spoke" style="--angle:126deg; --len:195px;">
+                    <div class="wg-node leaf" data-type="ip"><i class="fa-solid fa-wifi"></i><span>103.x</span></div>
+                  </div>
+                  <div class="wg-spoke" style="--angle:198deg; --len:195px;">
+                    <div class="wg-node leaf" data-type="upi"><i class="fa-solid fa-credit-card"></i><span>@upi</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="b-showcase__item__info">
+              <div class="info-header">
+                <span class="slide-indicator">02/05</span>
+                <p class="info-description">
+                  NetworkX connected component identity resolution engine links bank accounts, UPI IDs, SIM cards, IMEIs, and IP addresses into resolved suspect entity clusters.
+                </p>
+              </div>
+
+              <div class="info-specs">
+                <div class="spec-group">
+                  <span class="spec-label">Key Capability:</span>
+                  <p class="spec-value">Graph-anchored cross-layer identity resolution</p>
+                </div>
+
+                <div class="spec-group">
+                  <span class="spec-label">Resolved Identifiers:</span>
+                  <ul class="spec-list">
+                    <li>✓ MSISDN Phone &amp; IMEI Hardware</li>
+                    <li>✓ Bank Account Numbers &amp; UPI VPA</li>
+                    <li>✓ Dynamic IPDR Session IP Addresses</li>
+                    <li>✓ KYC Name &amp; Address Normalization</li>
+                  </ul>
+                </div>
+
+                <div class="action-buttons">
+                  <button class="btn-primary" onclick="enterDashboard()">Open Dashboard →</button>
+                  <a href="#workflow" class="btn-secondary">View Features</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </li>
+
+      <!-- STAGE 3: ANOMALY & PATTERN DETECTION -->
+      <li class="b-showcase__li" style="z-index: 3;">
+        <div class="b-showcase__item" style="--pcolor: #d4a017; --pbgcolor: #FDF9EC; --ptext: #111111;">
+          <p class="b-showcase__item__topbar">03 / Stage III · Anomaly &amp; Pattern Detection</p>
+          
+          <div class="b-showcase__item__holder">
+            <div class="b-showcase__item__content">
+              <h2 class="main-title">
+                7 Deterministic Rules &amp;<br>
+                <span class="highlight-word">IsolationForest ML</span>
+              </h2>
+
+              <div class="media-container">
+                <div class="wf-rules-grid">
+                  <div class="wfr-card on"><span class="wfr-id">MUL-1</span><span class="wfr-name">Mule Signature</span><span class="wfr-dot on"></span></div>
+                  <div class="wfr-card on"><span class="wfr-id">TCS-1</span><span class="wfr-name">Temporal Coincidence</span><span class="wfr-dot on"></span></div>
+                  <div class="wfr-card on"><span class="wfr-id">IDR-1</span><span class="wfr-name">Identity Fan-out</span><span class="wfr-dot on"></span></div>
+                  <div class="wfr-card on"><span class="wfr-id">STR-1</span><span class="wfr-name">Structuring</span><span class="wfr-dot on"></span></div>
+                  <div class="wfr-card on"><span class="wfr-id">LOC-1</span><span class="wfr-name">Location Mismatch</span><span class="wfr-dot on"></span></div>
+                  <div class="wfr-card on"><span class="wfr-id">TCS-2</span><span class="wfr-name">Pre-Transfer Call</span><span class="wfr-dot on"></span></div>
+                  <div class="wfr-card"><span class="wfr-id">LAY-1</span><span class="wfr-name">Layering Chain</span><span class="wfr-dot"></span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="b-showcase__item__info">
+              <div class="info-header">
+                <span class="slide-indicator">03/05</span>
+                <p class="info-description">
+                  Dual-engine risk framework: 7 transparent deterministic forensic rules evaluate row-level evidence alongside Scikit-learn IsolationForest ML anomaly scoring for 80% recall.
+                </p>
+              </div>
+
+              <div class="info-specs">
+                <div class="spec-group">
+                  <span class="spec-label">Key Capability:</span>
+                  <p class="spec-value">Transparent rule-gated risk tiering (80% recall)</p>
+                </div>
+
+                <div class="spec-group">
+                  <span class="spec-label">Forensic Highlights:</span>
+                  <ul class="spec-list">
+                    <li>✓ MUL-1 Dormant Mule Account Signature</li>
+                    <li>✓ TCS-1 Call + IP + Bank Temporal Join</li>
+                    <li>✓ LOC-1 Tower vs KYC Geo Mismatch</li>
+                    <li>✓ IsolationForest Machine Learning Flags</li>
+                  </ul>
+                </div>
+
+                <div class="action-buttons">
+                  <button class="btn-primary" onclick="enterDashboard()">Open Dashboard →</button>
+                  <a href="#workflow" class="btn-secondary">View Features</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </li>
+
+      <!-- STAGE 4: DECISION TRACE & AUDIT -->
+      <li class="b-showcase__li" style="z-index: 2;">
+        <div class="b-showcase__item" style="--pcolor: #b58900; --pbgcolor: #EEE8D5; --ptext: #111111;">
+          <p class="b-showcase__item__topbar">04 / Stage IV · Decision Trace &amp; Chain-of-Custody</p>
+          
+          <div class="b-showcase__item__holder">
+            <div class="b-showcase__item__content">
+              <h2 class="main-title">
+                Cryptographic Audit &amp;<br>
+                <span class="highlight-word">Decision Trace</span>
+              </h2>
+
+              <div class="media-container">
+                <div class="wf-export-list">
+                  <div class="wfe-item">
+                    <i class="fa-solid fa-file-code" style="color:#8b5cf6;"></i>
+                    <div>
+                      <div class="wfe-name">decision_trace.jsonl</div>
+                      <div class="wfe-sub">ENT-0037 · MUL-1 fired · bank_sbi rows 412–419 · CDR row 88</div>
+                    </div>
+                    <span class="wfe-tag">LINKED</span>
+                  </div>
+                  <div class="wfe-item">
+                    <i class="fa-solid fa-clock-rotate-left" style="color:#b58900;"></i>
+                    <div>
+                      <div class="wfe-name">Temporal Coincidence — TCS-1</div>
+                      <div class="wfe-sub">Call +91-9823412345 at 09:06:11 → IMPS ₹48,900 at 09:14:22</div>
+                    </div>
+                    <span class="wfe-tag">VERIFIED</span>
+                  </div>
+                  <div class="wfe-item">
+                    <i class="fa-solid fa-map-pin" style="color:#2b8a3e;"></i>
+                    <div>
+                      <div class="wfe-name">Location Mismatch — LOC-1</div>
+                      <div class="wfe-sub">SIM KYC: Ahmedabad · CDR Tower: Adajan, Surat (Δ = 271 km)</div>
+                    </div>
+                    <span class="wfe-tag">VERIFIED</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="b-showcase__item__info">
+              <div class="info-header">
+                <span class="slide-indicator">04/05</span>
+                <p class="info-description">
+                  Maintains an append-only JSONL audit trail linking every risk flag directly back to raw line references, ensuring 100% legal explainability in defense.
+                </p>
+              </div>
+
+              <div class="info-specs">
+                <div class="spec-group">
+                  <span class="spec-label">Key Capability:</span>
+                  <p class="spec-value">Row-level evidence linkage &amp; hash verification</p>
+                </div>
+
+                <div class="spec-group">
+                  <span class="spec-label">Chain-of-Custody Features:</span>
+                  <ul class="spec-list">
+                    <li>✓ Cryptographic SHA-256 File Verification</li>
+                    <li>✓ Exact Bank/CDR/IPDR Line Referencing</li>
+                    <li>✓ Transparent Non-Black-Box Audit Trail</li>
+                  </ul>
+                </div>
+
+                <div class="action-buttons">
+                  <button class="btn-primary" onclick="enterDashboard()">Open Dashboard →</button>
+                  <a href="#workflow" class="btn-secondary">View Features</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </li>
+
+      <!-- STAGE 5: FORENSIC REPORT EXPORT -->
+      <li class="b-showcase__li" style="z-index: 1;">
+        <div class="b-showcase__item" style="--pcolor: #2d826a; --pbgcolor: #94D4C1; --ptext: #111111;">
+          <p class="b-showcase__item__topbar">05 / Stage V · Forensic Report Export</p>
+          
+          <div class="b-showcase__item__holder">
+            <div class="b-showcase__item__content">
+              <h2 class="main-title">
+                Court-Admissible<br>
+                <span class="highlight-word">Sec 65B BSA Package</span>
+              </h2>
+
+              <div class="media-container">
+                <div class="wf-report-card">
+                  <div class="wfrc-header">
+                    <span style="font-family:var(--font-mono);font-size:11px;color:var(--orange);">CASE-2026-00412</span>
+                    <span class="wfrc-badge">CRITICAL — 94%</span>
+                  </div>
+                  <div class="wfrc-body">
+                    <div class="wfrc-row"><span class="wfrc-key">Subject</span><span class="wfrc-val">Rajesh A. Mehta (ENT-0037)</span></div>
+                    <div class="wfrc-row"><span class="wfrc-key">Rules Fired</span><span class="wfrc-val">MUL-1 ∧ TCS-1 ∧ IDR-1</span></div>
+                    <div class="wfrc-row"><span class="wfrc-key">Evidence</span><span class="wfrc-val">bank_sbi.xlsx + cdr_export.csv + ipdr</span></div>
+                    <div class="wfrc-row"><span class="wfrc-key">Sec 65B</span><span class="wfrc-val" style="color:#2ECC71;">✓ Hash-stamped · BSA certified</span></div>
+                    <div class="wfrc-row"><span class="wfrc-key">Format</span><span class="wfrc-val">Word + decision_trace.jsonl</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="b-showcase__item__info">
+              <div class="info-header">
+                <span class="slide-indicator">05/05</span>
+                <p class="info-description">
+                  One-click export of Section 65B Bharatiya Sakshya Adhiniyam (BSA) compliant forensic report packages, fully formatted with legal certification footers.
+                </p>
+              </div>
+
+              <div class="info-specs">
+                <div class="spec-group">
+                  <span class="spec-label">Key Capability:</span>
+                  <p class="spec-value">Legal certification &amp; Section 65B BSA compliance</p>
+                </div>
+                  <span class="spec-label">Export Deliverables:</span>
+                  <ul class="spec-list">
+                    <li>✓ Auto-generated Word (.docx) Forensic Dossier</li>
+                    <li>✓ Embedded Network Graph &amp; Geo-Location Maps</li>
+                    <li>✓ Legal Section 65B Certificate Footer</li>
+                  </ul>
+                </div>
+
+                <div class="action-buttons">
+                  <button class="btn-primary" onclick="enterDashboard()">Open Dashboard →</button>
+                  <a href="#workflow" class="btn-secondary">View Features</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+    </ul>
+  </section>
+
+  <!-- ── FEATURES / SERVICES SECTION ───────────────────── -->
+  <section class="features-section" id="workflow">
+    <div class="features-container">
+      
+      <!-- Section Header -->
+      <div class="services-header">
+        <div class="services-header-left">
+          <div class="section-eyebrow light">Functional Requirements — ERH26_PS_03</div>
+          <h2 class="services-main-title">Four Domains.</h2>
+        </div>
+        <div class="services-header-right">
+          <p class="features-sub">Our solutions are tailored to meet every requirement of cybercrime investigation — providing speed, reliability, and legal compliance at every stage of the journey.</p>
+        </div>
+      </div>
+
+      <!-- Services Interactive List -->
+      <div class="services-list-wrap">
+        <div class="services-list">
+          
+          <!-- Item 1 -->
+          <div class="project-row" data-index="0" onclick="enterDashboard('upload')">
+            <div class="project-left">
+              <span class="project-num">01</span>
+              <h2 class="project-title">Multi-Format Ingestion</h2>
+            </div>
+            <div class="project-right">
+              <span class="project-sub">Excel · CSV · PDF · CDR · IPDR Parser</span>
+              <i class="fa-solid fa-arrow-up-right project-arrow"></i>
+            </div>
+          </div>
+
+          <!-- Item 2 -->
+          <div class="project-row" data-index="1" onclick="enterDashboard('network')">
+            <div class="project-left">
+              <span class="project-num">02</span>
+              <h2 class="project-title">Cross-Dataset Fusion</h2>
+            </div>
+            <div class="project-right">
+              <span class="project-sub">NetworkX Graph &amp; Coincidence</span>
+              <i class="fa-solid fa-arrow-up-right project-arrow"></i>
+            </div>
+          </div>
+
+          <!-- Item 3 -->
+          <div class="project-row" data-index="2" onclick="enterDashboard('dashboard')">
+            <div class="project-left">
+              <span class="project-num">03</span>
+              <h2 class="project-title">Anomaly Detection</h2>
+            </div>
+            <div class="project-right">
+              <span class="project-sub">7 Deterministic Rules + ML</span>
+              <i class="fa-solid fa-arrow-up-right project-arrow"></i>
+            </div>
+          </div>
+
+          <!-- Item 4 -->
+          <div class="project-row" data-index="3" onclick="enterDashboard('reports')">
+            <div class="project-left">
+              <span class="project-num">04</span>
+              <h2 class="project-title">Reporting &amp; Visualization</h2>
+            </div>
+            <div class="project-right">
+              <span class="project-sub">Vis.js + Leaflet + Sec 65B BSA</span>
+              <i class="fa-solid fa-arrow-up-right project-arrow"></i>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Floating Modal Container (follows cursor on hover) -->
+        <div class="services-modal-container" id="services-modal">
+          <div class="services-modal-slider" id="services-slider">
+            
+            <!-- Card 0 -->
+            <div class="modal-card" style="background-color: #E2CDD9;">
+              <div class="modal-card-icon"><i class="fa-solid fa-file-import"></i></div>
+              <div class="modal-card-title">Ingestion Engine</div>
+              <div class="modal-card-badge">SHA-256 Verified</div>
+            </div>
+
+            <!-- Card 1 -->
+            <div class="modal-card" style="background-color: #D1DAE0;">
+              <div class="modal-card-icon"><i class="fa-solid fa-diagram-project"></i></div>
+              <div class="modal-card-title">Entity Fusion</div>
+              <div class="modal-card-badge">NetworkX Multi-Hop</div>
+            </div>
+
+            <!-- Card 2 -->
+            <div class="modal-card" style="background-color: #FDF9EC;">
+              <div class="modal-card-icon"><i class="fa-solid fa-shield-halved"></i></div>
+              <div class="modal-card-title">Rule Engine &amp; ML</div>
+              <div class="modal-card-badge">IsolationForest ML</div>
+            </div>
+
+            <!-- Card 3 -->
+            <div class="modal-card" style="background-color: #EEE8D5;">
+              <div class="modal-card-icon"><i class="fa-solid fa-file-contract"></i></div>
+              <div class="modal-card-title">Sec 65B Reporting</div>
+              <div class="modal-card-badge">BSA Certified Export</div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Floating Cursor Badge ("View") -->
+        <div class="services-cursor-badge" id="services-cursor">
+          <span>View</span>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── REDESIGNED GOOEY TECH STACK SECTION ──────────────────────── -->
+  <svg class="gooey-svg-filter" style="position: absolute; width: 0; height: 0; overflow: hidden;" aria-hidden="true">
+    <defs>
+      <filter id="goo-filter">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
+        <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 19 -9" result="goo" />
+        <feComposite in="SourceGraphic" in2="goo" operator="atop" />
+      </filter>
+    </defs>
+  </svg>
+
+  <section class="gooey-stack-section" id="stack">
+    <div class="gooey-stack-container">
+      
+      <!-- Section Header -->
+      <div class="gooey-stack-header">
+        <div class="section-eyebrow">Suggested Tools — Implemented</div>
+        <h2 class="gooey-stack-title">Built with the<br>Recommended Stack</h2>
+        <p class="gooey-stack-desc">
+          Every technology from the problem statement's suggested tools list is implemented or directly equivalent in E-RAKSHAK's backend pipeline and frontend dashboard.
+        </p>
+      </div>
+
+      <!-- Liquid Gooey Category Filter Bar -->
+      <div class="gooey-tabs-wrapper">
+        <div class="gooey-tabs-filter" id="gooey-tabs-filter">
+          <div class="gooey-tab-blob" id="gooey-tab-blob"></div>
+          <button class="gooey-tab active" data-category="all">All Stack</button>
+          <button class="gooey-tab" data-category="parsing">Parsing</button>
+          <button class="gooey-tab" data-category="graph">Graph</button>
+          <button class="gooey-tab" data-category="ml">Machine Learning</button>
+          <button class="gooey-tab" data-category="backend">Backend</button>
+          <button class="gooey-tab" data-category="frontend">Frontend</button>
+        </div>
+      </div>
+
+      <!-- Gooey Tech Stack Cards Grid -->
+      <div class="gooey-cards-grid" id="gooey-cards-grid">
+
+        <!-- Item 1: Parsing -->
+        <div class="gooey-card" data-category="parsing">
+          <div class="gooey-card-header">
+            <div class="gooey-card-icon"><i class="fa-solid fa-file-pdf"></i></div>
+            <span class="gooey-card-tag">Parsing &amp; Ingestion</span>
+          </div>
+          <h3 class="gooey-card-name">pdfplumber · OpenPyXL · Pandas</h3>
+          <p class="gooey-card-desc">Multi-format bank statement parser extracting transactional data, balance sanity, and account details from unstructured PDFs &amp; Excel sheets.</p>
+          <div class="gooey-card-footer">
+            <span class="gooey-pill"><i class="fa-solid fa-check"></i> PDF &amp; Excel Parser</span>
+            <span class="gooey-pill"><i class="fa-solid fa-shield-check"></i> Sec 65B Certified</span>
+          </div>
+        </div>
+
+        <!-- Item 2: Graph -->
+        <div class="gooey-card" data-category="graph">
+          <div class="gooey-card-header">
+            <div class="gooey-card-icon"><i class="fa-solid fa-diagram-project"></i></div>
+            <span class="gooey-card-tag">Graph Analytics</span>
+          </div>
+          <h3 class="gooey-card-name">NetworkX · Vis.js (Frontend)</h3>
+          <p class="gooey-card-desc">Cross-bank entity resolution and interactive force-directed graph modeling money trails across SBI, HDFC, ICICI, and phone accounts.</p>
+          <div class="gooey-card-footer">
+            <span class="gooey-pill"><i class="fa-solid fa-share-nodes"></i> Entity Linkage</span>
+            <span class="gooey-pill"><i class="fa-solid fa-fire"></i> Risk Heatmap</span>
+          </div>
+        </div>
+
+        <!-- Item 3: ML -->
+        <div class="gooey-card" data-category="ml">
+          <div class="gooey-card-header">
+            <div class="gooey-card-icon"><i class="fa-solid fa-microchip"></i></div>
+            <span class="gooey-card-tag">Machine Learning</span>
+          </div>
+          <h3 class="gooey-card-name">Scikit-learn IsolationForest</h3>
+          <p class="gooey-card-desc">Unsupervised anomaly detection flagging high-frequency micro-transfers, rapid drain patterns, and suspicious CDR call burst clusters.</p>
+          <div class="gooey-card-footer">
+            <span class="gooey-pill"><i class="fa-solid fa-brain"></i> IsolationForest</span>
+            <span class="gooey-pill"><i class="fa-solid fa-chart-line"></i> 80% Recall</span>
+          </div>
+        </div>
+
+        <!-- Item 4: Backend -->
+        <div class="gooey-card" data-category="backend">
+          <div class="gooey-card-header">
+            <div class="gooey-card-icon"><i class="fa-solid fa-server"></i></div>
+            <span class="gooey-card-tag">Backend Infrastructure</span>
+          </div>
+          <h3 class="gooey-card-name">Python · FastAPI · Uvicorn</h3>
+          <p class="gooey-card-desc">Asynchronous, high-throughput REST API backend running rule evaluation engine, automated STR generator, and live IPDR geolocation fusion.</p>
+          <div class="gooey-card-footer">
+            <span class="gooey-pill"><i class="fa-solid fa-bolt"></i> Async FastAPI</span>
+            <span class="gooey-pill"><i class="fa-solid fa-file-contract"></i> Auto STR</span>
+          </div>
+        </div>
+
+        <!-- Item 5: Frontend -->
+        <div class="gooey-card" data-category="frontend">
+          <div class="gooey-card-header">
+            <div class="gooey-card-icon"><i class="fa-solid fa-desktop"></i></div>
+            <span class="gooey-card-tag">Frontend &amp; Geospatial</span>
+          </div>
+          <h3 class="gooey-card-name">Vanilla HTML/CSS/JS · Leaflet · Vis.js</h3>
+          <p class="gooey-card-desc">Zero-dependency, lightning-fast dashboard featuring Surat cell tower tower-dump mapping, real-time command palette, and interactive investigative timelines.</p>
+          <div class="gooey-card-footer">
+            <span class="gooey-pill"><i class="fa-solid fa-map-location-dot"></i> Leaflet GIS</span>
+            <span class="gooey-pill"><i class="fa-solid fa-terminal"></i> Command Palette</span>
+          </div>
+        </div>
+
+        <!-- Item 6: Fusion & Deliverables -->
+        <div class="gooey-card" data-category="all">
+          <div class="gooey-card-header">
+            <div class="gooey-card-icon"><i class="fa-solid fa-chart-network"></i></div>
+            <span class="gooey-card-tag">Data Fusion</span>
+          </div>
+          <h3 class="gooey-card-name">CDR + IPDR + Bank Statement Fusion</h3>
+          <p class="gooey-card-desc">Unified multi-source investigation pipeline mapping cell tower locations directly with bank transfer timestamps and IP log entries.</p>
+          <div class="gooey-card-footer">
+            <span class="gooey-pill"><i class="fa-solid fa-layer-group"></i> 3-Way Fusion</span>
+            <span class="gooey-pill"><i class="fa-solid fa-certificate"></i> Forensic Ready</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Action Footer -->
+      <div class="gooey-stack-footer">
+        <button class="hero-cta gooey-cta" onclick="enterDashboard()">
+          Launch Demo <i class="fa-solid fa-arrow-right"></i>
+        </button>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── BONUS POINTS SECTION ──────────────────────────── -->
+  <section class="features-section" style="padding-top:0;">
+    <div class="features-header" style="margin-bottom:40px;">
+      <div class="section-eyebrow light">Bonus Deliverables</div>
+      <h2 class="features-title" style="font-size:32px;">All Bonus Criteria Addressed</h2>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:900px;margin:0 auto;">
+      <div class="feat-card">
+        <div class="feat-icon" style="background:rgba(255,176,32,0.1);color:#FFB020;"><i class="fa-solid fa-file-contract"></i></div>
+        <div class="feat-title">Auto STR Generation</div>
+        <div class="feat-desc">Suspicious Transaction Reports auto-generated with rule explanations, entity linkage and SHA-256 chain.</div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-icon" style="background:rgba(167,139,250,0.1);color:#a78bfa;"><i class="fa-solid fa-share-nodes"></i></div>
+        <div class="feat-title">Cross-Bank Network</div>
+        <div class="feat-desc">Nodes span SBI, HDFC, ICICI accounts. Risk heat-map coloring by tier (Critical → Low) on the entity graph.</div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-icon" style="background:rgba(46,204,113,0.1);color:#2ECC71;"><i class="fa-solid fa-comment-dots"></i></div>
+        <div class="feat-title">NL Query Ready</div>
+        <div class="feat-desc">AI Copilot panel accepts natural language: "show every transfer within 10 minutes of a call to ENT-0037."</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── LARGE TYPOGRAPHY HERO-MATCHED FOOTER WITH INTERACTIVE HOVER GRID ──── -->
+  <footer class="typo-footer" id="footer">
+    <canvas id="hover-grid"></canvas>
+    <div class="typo-footer-container">
+      
+      <!-- Top Subtitle & Quick Navigation Grid -->
+      <div class="typo-footer-top">
+        <div class="typo-footer-brand">
+          <div class="land-logo" style="margin-bottom:12px;">
+            <i class="fa-solid fa-shield-halved land-logo-icon"></i>
+            <span class="land-logo-name">E-RAKSHAK</span>
+          </div>
+          <p class="typo-footer-sub">AI-Powered Financial &amp; Telecom Dataset Analyzer</p>
+          <p class="typo-footer-tagline">Bank · CDR · IPDR fusion for <strong>Cybercrime Investigation</strong></p>
+        </div>
+
+        <div class="typo-footer-nav">
+          <div class="typo-footer-col">
+            <h4>EXPLORE</h4>
+            <a href="#how-it-works">How it Works</a>
+            <a href="#workflow">Features &amp; Domains</a>
+            <a href="#stack">Tech Stack</a>
+          </div>
+          <div class="typo-footer-col">
+            <h4>ANALYSIS</h4>
+            <a href="javascript:void(0)" onclick="enterDashboard('network')">Entity Resolution</a>
+            <a href="javascript:void(0)" onclick="enterDashboard('dashboard')">IsolationForest ML</a>
+            <a href="javascript:void(0)" onclick="enterDashboard('reports')">Sec 65B Export</a>
+            <a href="javascript:void(0)">Entity Resolution</a>
+            <a href="javascript:void(0)">IsolationForest ML</a>
+            <a href="javascript:void(0)">Sec 65B Export</a>
+          </div>
+        </div>
+
+        <div class="typo-footer-cta">
+          <button class="hero-cta zajno-cta">
+            Open Dashboard <i class="fa-solid fa-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- HUGE HERO-STYLE TYPOGRAPHY TITLE -->
+      <div class="typo-footer-header">
+        <h2 class="zajno-title typo-footer-title">E-RAKSHAK</h2>
+      </div>
+
+      <!-- Bottom Bar -->
+      <div class="typo-footer-bottom">
+        <div class="typo-footer-copy">
+          PS ID ERH26_PS_03 · Big Data &amp; Analytics · Bank + CDR + IPDR Fusion · Copyright ©2026 E-RAKSHAK
+        </div>
+        <div class="typo-footer-links">
+          <a href="javascript:void(0)">Privacy Protocol</a>
+          <a href="javascript:void(0)">Terms of Service</a>
+          <a href="javascript:void(0)">Sec 65B Compliance</a>
+        </div>
+      </div>
+
+    </div>
+  </footer>
+
+</div><!-- /landing-page -->
+
+      <!-- ══ SETTINGS VIEW ═════════════════════════════════ -->
+      <div class="view" id="view-settings">
+        <div class="page-header">
+          <div>
+            <div class="breadcrumb"><span>System</span><i class="fa-solid fa-chevron-right"></i><span>Settings</span></div>
+            <h1 class="page-title">Settings &amp; Upload</h1>
+          </div>
+        </div>
+        <div class="settings-grid">
+          <div class="card">
+            <div class="card-header"><div class="card-title">Appearance &amp; Theme</div></div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Theme Mode</div>
+                <div class="setting-sub" id="theme-mode-label">Dark Mode</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="theme-switch-checkbox" onchange="toggleTheme()">
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div class="card-title">Data Mode</div></div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Dataset</div>
+                <div class="setting-sub">Demo (Surat) or upload your own Bank/CDR/IPDR files.</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="mode-toggle">
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              </label>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label" id="mode-label">Demo Mode — Surat Dataset</div>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="openPipeline()">
+                <i class="fa-solid fa-play"></i> Run Pipeline
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div class="card-title">Upload Forensic Logs</div></div>
+            <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+              <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+              <div class="upload-title">Drop files or click to browse</div>
+              <div class="upload-sub">Bank statements (.xlsx, .csv, .pdf) · CDR · IPDR</div>
+              <input type="file" id="file-input" multiple style="display:none;">
+            </div>
+            <div id="file-list-panel" style="display:none;margin-top:14px;">
+              <ul class="file-list" id="uploaded-files-list"></ul>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div class="card-title">About E-RAKSHAK</div></div>
+            <div class="about-grid">
+              <div class="about-row"><span class="about-key">Problem ID</span><span class="about-val">ERH26_PS_03</span></div>
+              <div class="about-row"><span class="about-key">Domain</span><span class="about-val">Big Data &amp; Analytics</span></div>
+              <div class="about-row"><span class="about-key">Version</span><span class="about-val mono">v4.0.0</span></div>
+              <div class="about-row"><span class="about-key">Rules</span><span class="about-val">7 deterministic forensic rules</span></div>
+              <div class="about-row"><span class="about-key">ML</span><span class="about-val">IsolationForest (scikit-learn)</span></div>
+              <div class="about-row"><span class="about-key">Compliance</span><span class="about-val">Sec 65B BSA · NCRP L1→L4</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- Pipeline modal -->
+<div class="pipeline-overlay" id="pipeline-overlay" style="display:none;">
+  <div class="pipeline-modal">
+    <div class="pipeline-icon"><i class="fa-solid fa-gears fa-spin"></i></div>
+    <div class="pipeline-title">Running Analysis Pipeline</div>
+    <div class="pipeline-steps" id="pipeline-steps"></div>
+    <div class="pipeline-bar-wrap"><div class="pipeline-bar" id="pipeline-bar"></div></div>
+    <button class="btn btn-ghost btn-sm" onclick="closePipelineOverlay()" style="margin-top:16px;">Dismiss</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+          </table>
+        </div>
+      </div>
+
+      <!-- ══ POI VIEW ══════════════════════════════════════ -->
+      <div class="view" id="view-poi">
+        <div class="page-header">
+          <div>
+            <div class="breadcrumb"><span>Operations</span><i class="fa-solid fa-chevron-right"></i><span>Persons of Interest</span></div>
+            <h1 class="page-title">Persons of Interest — Resolved Entities</h1>
+          </div>
+        </div>
+        <div class="poi-grid" id="poi-grid"></div>
+      </div>
+
+      <!-- ══ EVIDENCE VIEW ═════════════════════════════════ -->
+      <div class="view" id="view-evidence">
+        <div class="page-header">
+          <div>
+            <div class="breadcrumb"><span>Forensic Datasets</span><i class="fa-solid fa-chevron-right"></i><span>Evidence Vault</span></div>
+            <h1 class="page-title">Evidence Vault — Bank + CDR + IPDR</h1>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Ingested Artifacts</div>
+            <span class="tag tag-green"><i class="fa-solid fa-lock"></i> Sec 65B Hash-Sealed</span>
+          </div>
+          <div class="evidence-list" id="evidence-list"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Decision Trace Log — Bank+CDR+IPDR Correlations</div>
+            <button class="btn btn-ghost btn-sm">
+              <i class="fa-solid fa-download"></i> decision_trace.jsonl
+            </button>
+          </div>
+          <div class="trace-list" id="trace-list"></div>
+        </div>
+      </div>
+
+      <!-- ══ REPORTS VIEW ══════════════════════════════════ -->
+      <div class="view" id="view-reports">
+        <div class="page-header">
+          <div>
+            <div class="breadcrumb"><span>Forensic Datasets</span><i class="fa-solid fa-chevron-right"></i><span>Reports</span></div>
+            <h1 class="page-title">Forensic Reports &amp; Suspicious Transaction Reports</h1>
+          </div>
+        </div>
+        <div class="reports-grid" id="reports-grid"></div>
+      </div>
+
+      <!-- ══ NETWORK VIEW ══════════════════════════════════ -->
+      <div class="view" id="view-network">
+        <div class="page-header">
+          <div>
+            <div class="breadcrumb"><span>Visualization</span><i class="fa-solid fa-chevron-right"></i><span>Entity Graph</span></div>
+            <h1 class="page-title">Money-Flow &amp; Identity Resolution Network</h1>
+          </div>
+        </div>
+        <div class="card network-card">
+          <div class="node-legend">
+            <span class="legend-item"><span class="node-dot phone"></span>Phone (CDR)</span>
+            <span class="legend-item"><span class="node-dot account"></span>Bank Account</span>
+            <span class="legend-item"><span class="node-dot vpa"></span>UPI / VPA</span>
+            <span class="legend-item"><span class="node-dot imei"></span>IMEI (CDR)</span>
+            <span class="legend-item"><span class="node-dot ip"></span>IP (IPDR)</span>
+          </div>
+          <div class="network-toolbar">
+            <div class="search-inline compact">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" id="network-search-input" placeholder="Search entity…">
+            </div>
+            <select class="select-sm" id="network-risk-filter">
+              <option value="FLAGGED">Flagged only</option>
+              <option value="ALL">All nodes</option>
+              <option value="CRITICAL">Critical tier</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" id="btn-reset-network">
+              <i class="fa-solid fa-compress"></i> Fit
+            </button>
+          </div>
+          <div class="network-workspace">
+            <div id="identity-network" class="network-canvas"></div>
+            <div class="network-inspector" id="network-inspector">
+              <div class="inspector-header"><i class="fa-solid fa-circle-info"></i> Entity Inspector</div>
+              <div class="inspector-body" id="inspector-body">
+                <p class="inspector-hint"><i class="fa-solid fa-hand-pointer"></i> Click a node to inspect — phone, account, IMEI, IP, or UPI linkages.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ MAP VIEW ══════════════════════════════════════ -->
+      <div class="view" id="view-map">
+        <div class="page-header">
+          <div>
+            <div class="breadcrumb"><span>Visualization</span><i class="fa-solid fa-chevron-right"></i><span>Geo Map</span></div>
+            <h1 class="page-title">Surat Cell Tower Map — CDR Location Correlation</h1>
+          </div>
+        </div>
+        <div class="card map-card">
+          <div id="surat-map" class="leaflet-map"></div>
+        </div>
+      </div>
+
+      <!-- ══ SETTINGS VIEW ═════════════════════════════════ -->
+      <div class="view" id="view-settings">
+        <div class="page-header">
+          <div>
+            <div class="breadcrumb"><span>System</span><i class="fa-solid fa-chevron-right"></i><span>Settings</span></div>
+            <h1 class="page-title">Settings &amp; Upload</h1>
+          </div>
+        </div>
+        <div class="settings-grid">
+          <div class="card">
+            <div class="card-header"><div class="card-title">Appearance &amp; Theme</div></div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Theme Mode</div>
+                <div class="setting-sub" id="theme-mode-label">Dark Mode</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="theme-switch-checkbox" onchange="toggleTheme()">
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div class="card-title">Data Mode</div></div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Dataset</div>
+                <div class="setting-sub">Demo (Surat) or upload your own Bank/CDR/IPDR files.</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="mode-toggle">
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              </label>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label" id="mode-label">Demo Mode — Surat Dataset</div>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="openPipeline()">
+                <i class="fa-solid fa-play"></i> Run Pipeline
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div class="card-title">Upload Forensic Logs</div></div>
+            <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+              <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+              <div class="upload-title">Drop files or click to browse</div>
+              <div class="upload-sub">Bank statements (.xlsx, .csv, .pdf) · CDR · IPDR</div>
+              <input type="file" id="file-input" multiple style="display:none;">
+            </div>
+            <div id="file-list-panel" style="display:none;margin-top:14px;">
+              <ul class="file-list" id="uploaded-files-list"></ul>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div class="card-title">About E-RAKSHAK</div></div>
+            <div class="about-grid">
+              <div class="about-row"><span class="about-key">Problem ID</span><span class="about-val">ERH26_PS_03</span></div>
+              <div class="about-row"><span class="about-key">Domain</span><span class="about-val">Big Data &amp; Analytics</span></div>
+              <div class="about-row"><span class="about-key">Version</span><span class="about-val mono">v4.0.0</span></div>
+              <div class="about-row"><span class="about-key">Rules</span><span class="about-val">7 deterministic forensic rules</span></div>
+              <div class="about-row"><span class="about-key">ML</span><span class="about-val">IsolationForest (scikit-learn)</span></div>
+              <div class="about-row"><span class="about-key">Compliance</span><span class="about-val">Sec 65B BSA · NCRP L1→L4</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- Pipeline modal -->
+<div class="pipeline-overlay" id="pipeline-overlay" style="display:none;">
+  <div class="pipeline-modal">
+    <div class="pipeline-icon"><i class="fa-solid fa-gears fa-spin"></i></div>
+    <div class="pipeline-title">Running Analysis Pipeline</div>
+    <div class="pipeline-steps" id="pipeline-steps"></div>
+    <div class="pipeline-bar-wrap"><div class="pipeline-bar" id="pipeline-bar"></div></div>
+    <button class="btn btn-ghost btn-sm" onclick="closePipelineOverlay()" style="margin-top:16px;">Dismiss</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.3/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/CustomEase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.18/dist/lenis.min.js"></script>
+<script src="app.js?v=12"></script>
+</body>
+</html>

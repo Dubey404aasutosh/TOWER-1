@@ -1,0 +1,177 @@
+{
+  "generated_at": "2026-08-09T19:15:03.975962",
+  "scale": 1.0,
+  "total_entities": 45,
+  "normal_entities": 40,
+  "guilty_entities": 5,
+  "total_events": 2404,
+  "guilty_entity_ids": [
+    "E041",
+    "E042",
+    "E043",
+    "E044",
+    "E045"
+  ],
+  "entities": [
+    {
+      "entity_id": "E041",
+      "typology": "STR-1",
+      "name": "Yashica Issac",
+      "raw_identifiers": {
+        "phones": [
+          "9754703713"
+        ],
+        "accounts": [
+          "92127799799"
+        ],
+        "imeis": [
+          "218188355231243"
+        ],
+        "vpas": [
+          "yashica.issac@okaxis"
+        ],
+        "ips": []
+      },
+      "expected_flagged_rows": [
+        "bank_row_2127",
+        "bank_row_2128",
+        "bank_row_2129",
+        "bank_row_2130",
+        "bank_row_2131",
+        "bank_row_2132"
+      ],
+      "narrative": "Structuring: large fraud credit followed by 5 transfers under INR 50k threshold within 36 hours"
+    },
+    {
+      "entity_id": "E042",
+      "typology": "LAY-1",
+      "name": "Kashvi Edwin",
+      "raw_identifiers": {
+        "phones": [
+          "9646866075"
+        ],
+        "accounts": [
+          "79807935978207"
+        ],
+        "imeis": [
+          "905814770054119"
+        ],
+        "vpas": [
+          "kashvi.edwin@oksbi"
+        ],
+        "ips": []
+      },
+      "expected_flagged_rows": [
+        "bank_row_2177",
+        "cdr_row_2178",
+        "ipdr_row_2179",
+        "bank_row_2180",
+        "bank_row_2181",
+        "cdr_row_2182",
+        "ipdr_row_2183",
+        "bank_row_2184",
+        "bank_row_2185",
+        "cdr_row_2186",
+        "ipdr_row_2187",
+        "bank_row_2188",
+        "bank_row_2189",
+        "cdr_row_2190",
+        "bank_row_2191"
+      ],
+      "narrative": "Layering: A->B->C->D circular flow with 5-15% commission skim, calls before each transfer"
+    },
+    {
+      "entity_id": "E043",
+      "typology": "MUL-1",
+      "name": "Ekiya Suresh",
+      "raw_identifiers": {
+        "phones": [
+          "9568978194"
+        ],
+        "accounts": [
+          "8644925192"
+        ],
+        "imeis": [
+          "889255466590515"
+        ],
+        "vpas": [
+          "ekiya.suresh@okaxis"
+        ],
+        "ips": []
+      },
+      "expected_flagged_rows": [
+        "bank_row_2240",
+        "bank_row_2241",
+        "bank_row_2242",
+        "bank_row_2243",
+        "bank_row_2244",
+        "cdr_row_2245",
+        "ipdr_row_2246"
+      ],
+      "narrative": "Mule Signature: 35 days dormant, INR 5L inflow, 90% outflow within 2 hours"
+    },
+    {
+      "entity_id": "E044",
+      "typology": "IDR-1",
+      "name": "Isaac Patil",
+      "raw_identifiers": {
+        "phones": [
+          "9831516757",
+          "9670306604",
+          "9768716573"
+        ],
+        "accounts": [
+          "3750606853",
+          "15305152204727",
+          "90104328986143"
+        ],
+        "imeis": [
+          "369711798089324"
+        ],
+        "vpas": [
+          "isaac.patil@okaxis",
+          "isaac.patil@oksbi",
+          "isaac.patil@oksbi"
+        ],
+        "ips": []
+      },
+      "expected_flagged_rows": [
+        "bank_row_2300",
+        "bank_row_2301",
+        "bank_row_2302",
+        "bank_row_2317",
+        "bank_row_2318",
+        "bank_row_2319",
+        "bank_row_2340",
+        "bank_row_2341",
+        "bank_row_2342"
+      ],
+      "narrative": "Identity Fan-out: 1 IMEI across 3 phones + 3 accounts, structuring spread across them"
+    },
+    {
+      "entity_id": "E045",
+      "typology": "LOC-1",
+      "name": "Wriddhish Bhardwaj",
+      "raw_identifiers": {
+        "phones": [
+          "9768743530"
+        ],
+        "accounts": [
+          "74688623924075"
+        ],
+        "imeis": [
+          "065379473834735"
+        ],
+        "vpas": [
+          "wriddhish.bhardwaj@ybl"
+        ],
+        "ips": []
+      },
+      "expected_flagged_rows": [
+        "cdr_row_2359",
+        "ipdr_row_2360"
+      ],
+      "narrative": "Geo-Improbable: call from Mumbai tower, IP session from Bangalore 15 minutes later"
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+[
+  {
+    "scale": 1,
+    "total_entities": 45,
+    "total_events": 2404,
+    "actual_dataframe_rows": 2372,
+    "stage_times_sec": {
+      "ingestion": 8.0212,
+      "entity_resolution": 0.1485,
+      "temporal_correlation": 3.0085,
+      "rule_engine": 10.8082,
+      "risk_scoring": 5.0582,
+      "network_graph": 0.2939,
+      "total_pipeline": 27.3384
+    },
+    "peak_memory_mb": 64.93
+  },
+  {
+    "scale": 5,
+    "total_entities": 205,
+    "total_events": 11122,
+    "actual_dataframe_rows": 10999,
+    "stage_times_sec": {
+      "ingestion": 35.1323,
+      "entity_resolution": 0.5257,
+      "temporal_correlation": 12.2589,
+      "rule_engine": 43.9753,
+      "risk_scoring": 21.3957,
+      "network_graph": 0.7688,
+      "total_pipeline": 114.0568
+    },
+    "peak_memory_mb": 198.84
+  },
+  {
+    "scale": 10,
+    "total_entities": 405,
+    "total_events": 21741,
+    "actual_dataframe_rows": 19526,
+    "stage_times_sec": {
+      "ingestion": 98.5662,
+      "entity_resolution": 3.3496,
+      "temporal_correlation": 20.6058,
+      "rule_engine": 120.3373,
+      "risk_scoring": 58.9429,
+      "network_graph": 1.2156,
+      "total_pipeline": 303.0177
+    },
+    "peak_memory_mb": 363.46
+  },
+  {
+    "scale": 25,
+    "total_entities": 1005,
+    "total_events": 53715,
+    "actual_dataframe_rows": 48036,
+    "stage_times_sec": {
+      "ingestion": 326.9255,
+      "entity_resolution": 4.5934,
+      "temporal_correlation": 96.9163,
+      "rule_engine": 291.6623,
+      "risk_scoring": 236.2432,
+      "network_graph": 4.5448,
+      "total_pipeline": 960.8856
+    },
+    "peak_memory_mb": 872.58
+  }
+]
