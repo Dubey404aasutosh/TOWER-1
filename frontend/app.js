@@ -1649,6 +1649,441 @@ function initMap() {
   });
 }
 
+/* ══ UNIFIED EVIDENTIARY TIMELINE (S2.1 · FR-II.a) ═══════════════════
+   One entity's whole story on a single time axis, in three lanes, with the
+   temporal correlation windows drawn over it.
+
+   Drawn as plain SVG rather than pulled from a charting library: the view needs
+   focus+context, and that is the whole point of the screen. The demo dataset
+   spans six weeks while a correlation window is ±10 minutes — roughly 0.02% of
+   the axis. Rendered at full range the decisive moment is a hairline, so the
+   context strip carries the whole range and the detail panel shows the slice, and
+   the "Correlation windows" preset walks straight to the moments that matter. */
+
+const TIMELINE_LANES = [
+  { key: 'transaction', label: 'Transactions', color: '#3D7CFF' },
+  { key: 'call', label: 'Calls / SMS', color: '#2ECC71' },
+  { key: 'ip_session', label: 'IP Sessions', color: '#a78bfa' },
+];
+const TL_COLORS = {
+  credit: '#2ECC71', debit: '#FF4D4D',
+  call: '#3D7CFF', ip_session: '#a78bfa',
+  window: '#FFB020',
+};
+
+const timelineState = {
+  entityId: null,
+  payload: null,
+  t0: null, t1: null,      // visible window, ms
+  fullT0: null, fullT1: null,
+  correlationIndex: -1,
+  selectedEventId: null,
+  loading: false,
+};
+
+function initTimeline() {
+  const select = document.getElementById('timeline-entity-select');
+  if (!select) return;
+
+  // Offer the entities the engine actually escalated. REPORTS is tier-sorted, so
+  // the default is the highest-risk entity of whatever dataset is loaded — no
+  // entity id is hardcoded here.
+  const options = REPORTS.length
+    ? REPORTS
+    : (appState.results?.suspects || [])
+      .filter(s => s.risk_tier !== 'LOW')
+      .map(s => ({ entityId: s.entity_id, name: s.name, tier: s.risk_tier, rules: s.rules_fired || [] }));
+
+  if (!options.length) {
+    document.getElementById('timeline-summary').innerHTML =
+      '<span class="tl-empty">No flagged entity in the current run. Run the pipeline, then return here.</span>';
+    return;
+  }
+
+  const current = timelineState.entityId;
+  select.innerHTML = options.map(o =>
+    `<option value="${escapeAttr(o.entityId)}" ${o.entityId === current ? 'selected' : ''}>
+       ${escapeHTML(o.entityId)} — ${escapeHTML(o.tier)}${o.name && o.name !== 'Unnamed entity' ? ' · ' + escapeHTML(o.name) : ''}
+     </option>`).join('');
+
+  if (!select._wired) {
+    select._wired = true;
+    select.addEventListener('change', e => loadTimeline(e.target.value));
+  }
+
+  if (!timelineState.payload || timelineState.entityId !== select.value) {
+    loadTimeline(select.value);
+  } else {
+    renderTimeline();
+  }
+}
+
+async function loadTimeline(entityId) {
+  if (!entityId || timelineState.loading) return;
+  timelineState.loading = true;
+  timelineState.entityId = entityId;
+  timelineState.selectedEventId = null;
+  timelineState.correlationIndex = -1;
+
+  const summary = document.getElementById('timeline-summary');
+  if (summary) summary.innerHTML = '<span class="tl-empty"><i class="fa-solid fa-spinner fa-spin"></i> Loading timeline…</span>';
+
+  const link = document.getElementById('timeline-report-link');
+  if (link) link.href = `${API_BASE}/api/download-report/${encodeURIComponent(entityId)}`;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/entity/${encodeURIComponent(entityId)}/timeline`,
+      { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error(`timeline ${res.status}`);
+    const payload = await res.json();
+    // A late response for an entity the user has already moved off must not paint.
+    if (timelineState.entityId !== entityId) return;
+
+    timelineState.payload = payload;
+    const stamps = (payload.events || []).map(e => Date.parse(e.t)).filter(Number.isFinite);
+    if (stamps.length) {
+      timelineState.fullT0 = Math.min(...stamps);
+      timelineState.fullT1 = Math.max(...stamps);
+      const pad = Math.max((timelineState.fullT1 - timelineState.fullT0) * 0.02, 60000);
+      timelineState.fullT0 -= pad;
+      timelineState.fullT1 += pad;
+      timelineState.t0 = timelineState.fullT0;
+      timelineState.t1 = timelineState.fullT1;
+    }
+    renderTimeline();
+  } catch (e) {
+    if (summary) summary.innerHTML =
+      `<span class="tl-empty"><i class="fa-solid fa-triangle-exclamation"></i> Timeline unavailable (${escapeHTML(String(e.message || e))}).</span>`;
+  } finally {
+    timelineState.loading = false;
+  }
+}
+
+function tlNiceTicks(t0, t1, target) {
+  const span = t1 - t0;
+  const MIN = 60000, HOUR = 3600000, DAY = 86400000;
+  const steps = [MIN, 5 * MIN, 15 * MIN, 30 * MIN, HOUR, 3 * HOUR, 6 * HOUR, 12 * HOUR,
+    DAY, 2 * DAY, 7 * DAY, 14 * DAY, 30 * DAY];
+  let step = steps[steps.length - 1];
+  for (const s of steps) { if (span / s <= target) { step = s; break; } }
+  const ticks = [];
+  for (let t = Math.ceil(t0 / step) * step; t <= t1; t += step) ticks.push(t);
+  return { ticks, step };
+}
+
+function tlFormatTick(ms, step) {
+  const d = new Date(ms);
+  const pad = n => String(n).padStart(2, '0');
+  if (step < 86400000) return `${pad(d.getDate())} ${d.toLocaleString('en', { month: 'short' })}\n${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${pad(d.getDate())} ${d.toLocaleString('en', { month: 'short' })}`;
+}
+
+function tlFormatStamp(iso) {
+  if (!iso) return '';
+  return String(iso).slice(0, 19).replace('T', ' ');
+}
+
+function renderTimeline() {
+  const payload = timelineState.payload;
+  const svg = document.getElementById('timeline-detail');
+  if (!payload || !svg) return;
+
+  renderTimelineSummary(payload);
+  renderTimelineZoomPresets(payload);
+  renderTimelineLegend(payload);
+  renderTimelineDetail(payload);
+  renderTimelineContext(payload);
+}
+
+function renderTimelineSummary(payload) {
+  const el = document.getElementById('timeline-summary');
+  if (!el) return;
+  const tierClass = payload.risk_tier === 'CRITICAL' ? 'tag-danger'
+    : payload.risk_tier === 'HIGH' ? 'tag-warn' : 'tag-blue';
+  const lanes = (payload.lanes || []).map(l => `${fmtNum(l.count)} ${l.label.toLowerCase()}`).join(' · ');
+  el.innerHTML = `
+    <span class="tl-entity">${escapeHTML(payload.entity_id)}</span>
+    ${payload.name ? `<span class="tl-name">${escapeHTML(payload.name)}</span>` : ''}
+    <span class="tag ${tierClass}">${escapeHTML(payload.risk_tier || 'LOW')}</span>
+    ${(payload.rules_fired || []).map(r => `<span class="rule-chip">${escapeHTML(r)}</span>`).join('')}
+    <span class="tl-counts">${escapeHTML(lanes)}${payload.correlations?.length
+      ? ` · <b>${payload.correlations.length} correlation window${payload.correlations.length > 1 ? 's' : ''}</b>` : ''}</span>`;
+}
+
+function renderTimelineZoomPresets(payload) {
+  const el = document.getElementById('timeline-zoom-presets');
+  if (!el) return;
+  const hasCorr = (payload.correlations || []).length > 0;
+  el.innerHTML = `
+    <button class="filter-btn" onclick="timelineZoom('all')">Full range</button>
+    <button class="filter-btn" onclick="timelineZoom('day')">1 day</button>
+    <button class="filter-btn" onclick="timelineZoom('hour')">1 hour</button>
+    ${hasCorr ? `<button class="filter-btn tl-corr-btn" onclick="timelineZoom('correlation')">
+        <i class="fa-solid fa-crosshairs"></i> Correlation window
+        ${payload.correlations.length > 1 ? `<span class="tl-corr-count">${payload.correlations.length}</span>` : ''}
+      </button>` : ''}`;
+}
+
+function renderTimelineLegend(payload) {
+  const el = document.getElementById('timeline-legend');
+  if (!el) return;
+  const items = [
+    [TL_COLORS.credit, 'Credit (money in)'],
+    [TL_COLORS.debit, 'Debit (money out)'],
+    [TL_COLORS.call, 'Call / SMS'],
+    [TL_COLORS.ip_session, 'IP session'],
+  ];
+  el.innerHTML = items.map(([c, label]) =>
+    `<span class="legend-item"><span style="width:8px;height:8px;border-radius:50%;background:${c};flex-shrink:0;"></span> ${label}</span>`
+  ).join('') + (payload.correlations?.length
+    ? `<span class="legend-item"><span style="width:14px;height:9px;background:${TL_COLORS.window};opacity:.45;flex-shrink:0;"></span> ±${payload.window_minutes} min correlation window</span>` : '')
+    + (payload.flagged_row_refs?.length
+      ? `<span class="legend-item"><span style="width:9px;height:9px;border-radius:50%;border:2px solid #fff;flex-shrink:0;"></span> Cited as evidence</span>` : '');
+}
+
+function timelineZoom(mode) {
+  const s = timelineState;
+  if (!s.payload) return;
+  if (mode === 'all') {
+    s.t0 = s.fullT0; s.t1 = s.fullT1; s.correlationIndex = -1;
+  } else if (mode === 'correlation') {
+    const bands = s.payload.correlations || [];
+    if (!bands.length) return;
+    // Step through the correlation windows one click at a time.
+    s.correlationIndex = (s.correlationIndex + 1) % bands.length;
+    const c = bands[s.correlationIndex];
+    const centre = Date.parse(c.centre);
+    const half = (s.payload.window_minutes || 10) * 60000 * 3;
+    s.t0 = centre - half; s.t1 = centre + half;
+  } else {
+    const span = mode === 'day' ? 86400000 : 3600000;
+    const centre = (s.t0 + s.t1) / 2;
+    s.t0 = centre - span / 2; s.t1 = centre + span / 2;
+  }
+  renderTimelineDetail(s.payload);
+  renderTimelineContext(s.payload);
+}
+
+function renderTimelineDetail(payload) {
+  const svg = document.getElementById('timeline-detail');
+  if (!svg) return;
+
+  const W = svg.clientWidth || svg.parentElement.clientWidth || 900;
+  const GUTTER = 96, PAD_R = 18, TOP = 16, LANE_H = 60, AXIS_H = 34;
+  const H = TOP + LANE_H * TIMELINE_LANES.length + AXIS_H;
+  const plotW = Math.max(W - GUTTER - PAD_R, 60);
+  const { t0, t1 } = timelineState;
+  const x = ms => GUTTER + ((ms - t0) / Math.max(t1 - t0, 1)) * plotW;
+  const laneY = i => TOP + i * LANE_H + LANE_H / 2;
+
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('height', H);
+
+  const parts = [];
+
+  // Correlation bands behind everything else.
+  (payload.correlations || []).forEach((c, i) => {
+    const s = Date.parse(c.start), e = Date.parse(c.end);
+    if (e < t0 || s > t1) return;
+    const xs = Math.max(x(s), GUTTER), xe = Math.min(x(e), GUTTER + plotW);
+    parts.push(`<rect x="${xs}" y="${TOP}" width="${Math.max(xe - xs, 1.5)}" height="${LANE_H * 3}"
+      fill="${TL_COLORS.window}" opacity="${c.kind === 'tcs1' ? 0.22 : 0.11}"/>`);
+    if (c.kind === 'tcs1') {
+      const xc = x(Date.parse(c.centre));
+      if (xc >= GUTTER && xc <= GUTTER + plotW) {
+        parts.push(`<line x1="${xc}" y1="${TOP}" x2="${xc}" y2="${TOP + LANE_H * 3}"
+          stroke="${TL_COLORS.window}" stroke-width="1" opacity="0.7"/>`);
+      }
+    }
+  });
+
+  // Lane rails + labels.
+  TIMELINE_LANES.forEach((lane, i) => {
+    const y = laneY(i);
+    parts.push(`<line x1="${GUTTER}" y1="${y}" x2="${GUTTER + plotW}" y2="${y}"
+      stroke="var(--border-dark)" stroke-width="1"/>`);
+    const count = (payload.lanes || []).find(l => l.key === lane.key)?.count || 0;
+    parts.push(`<text x="${GUTTER - 10}" y="${y - 2}" text-anchor="end"
+      class="tl-lane-label">${lane.label}</text>`);
+    parts.push(`<text x="${GUTTER - 10}" y="${y + 11}" text-anchor="end"
+      class="tl-lane-count">${count}</text>`);
+  });
+
+  // Time axis.
+  const { ticks, step } = tlNiceTicks(t0, t1, 7);
+  const axisY = TOP + LANE_H * 3;
+  ticks.forEach(t => {
+    const tx = x(t);
+    if (tx < GUTTER - 1 || tx > GUTTER + plotW + 1) return;
+    parts.push(`<line x1="${tx}" y1="${TOP}" x2="${tx}" y2="${axisY}" stroke="var(--border-dark)"
+      stroke-width="1" opacity="0.55"/>`);
+    tlFormatTick(t, step).split('\n').forEach((line, li) => {
+      parts.push(`<text x="${tx}" y="${axisY + 15 + li * 11}" text-anchor="middle" class="tl-tick">${line}</text>`);
+    });
+  });
+
+  // Markers. Amount drives radius so a ₹5,00,000 inflow is visibly the event of
+  // the day next to a ₹900 one.
+  const amounts = (payload.events || [])
+    .filter(e => e.lane === 'transaction' && e.amount).map(e => e.amount);
+  const maxAmt = amounts.length ? Math.max(...amounts) : 0;
+  const radius = ev => {
+    if (ev.lane !== 'transaction' || !ev.amount || maxAmt <= 0) return 4.5;
+    const r = Math.log10(Math.max(ev.amount, 1)) / Math.max(Math.log10(Math.max(maxAmt, 10)), 1);
+    return 4 + 9 * Math.max(0, Math.min(r, 1));
+  };
+
+  let visible = 0;
+  (payload.events || []).forEach(ev => {
+    const laneIdx = TIMELINE_LANES.findIndex(l => l.key === ev.lane);
+    if (laneIdx < 0) return;
+    const ms = Date.parse(ev.t);
+    if (!Number.isFinite(ms) || ms < t0 || ms > t1) return;
+    visible++;
+    const cx = x(ms), cy = laneY(laneIdx);
+
+    // An IP session has a duration; draw it rather than pretending it is a point.
+    if (ev.lane === 'ip_session' && ev.t_end) {
+      const xe = x(Date.parse(ev.t_end));
+      if (xe > cx + 1) {
+        parts.push(`<line x1="${cx}" y1="${cy}" x2="${Math.min(xe, GUTTER + plotW)}" y2="${cy}"
+          stroke="${TL_COLORS.ip_session}" stroke-width="4" opacity="0.4" stroke-linecap="round"/>`);
+      }
+    }
+
+    const fill = ev.lane === 'transaction'
+      ? (ev.direction === 'credit' ? TL_COLORS.credit : TL_COLORS.debit)
+      : TL_COLORS[ev.lane];
+    const selected = timelineState.selectedEventId === ev.id;
+    const stroke = selected ? '#FFFFFF' : (ev.cited ? '#FFFFFF' : 'rgba(0,0,0,0.35)');
+    const sw = selected ? 3 : (ev.cited ? 2 : 0.8);
+    parts.push(`<circle class="tl-marker" data-event-id="${escapeAttr(ev.id)}"
+      cx="${cx}" cy="${cy}" r="${radius(ev)}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}">
+      <title>${escapeAttr(`${tlFormatStamp(ev.t)} · ${ev.label}${ev.counterparty ? ' → ' + ev.counterparty : ''}`)}</title>
+    </circle>`);
+  });
+
+  if (!visible) {
+    parts.push(`<text x="${GUTTER + plotW / 2}" y="${TOP + LANE_H * 1.5}" text-anchor="middle"
+      class="tl-empty-note">No events in this window — widen it or choose "Full range".</text>`);
+  }
+
+  svg.innerHTML = parts.join('');
+
+  if (!svg._wired) {
+    svg._wired = true;
+    svg.addEventListener('click', e => {
+      const marker = e.target.closest('.tl-marker');
+      if (!marker) return;
+      selectTimelineEvent(marker.getAttribute('data-event-id'));
+    });
+    // Wheel zooms about the cursor, the way every map does.
+    svg.addEventListener('wheel', e => {
+      if (!timelineState.payload) return;
+      e.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      const frac = Math.max(0, Math.min((e.clientX - rect.left - 96) / Math.max(rect.width - 114, 1), 1));
+      const { t0: a, t1: b } = timelineState;
+      const focus = a + (b - a) * frac;
+      const factor = e.deltaY > 0 ? 1.25 : 0.8;
+      const span = Math.max((b - a) * factor, 60000);
+      timelineState.t0 = focus - span * frac;
+      timelineState.t1 = focus + span * (1 - frac);
+      renderTimelineDetail(timelineState.payload);
+      renderTimelineContext(timelineState.payload);
+    }, { passive: false });
+  }
+}
+
+function renderTimelineContext(payload) {
+  const svg = document.getElementById('timeline-context');
+  if (!svg) return;
+
+  const W = svg.clientWidth || svg.parentElement.clientWidth || 900;
+  const H = 46, GUTTER = 96, PAD_R = 18;
+  const plotW = Math.max(W - GUTTER - PAD_R, 60);
+  const { fullT0, fullT1, t0, t1 } = timelineState;
+  const x = ms => GUTTER + ((ms - fullT0) / Math.max(fullT1 - fullT0, 1)) * plotW;
+
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('height', H);
+
+  const parts = [`<rect x="${GUTTER}" y="8" width="${plotW}" height="${H - 20}"
+    fill="var(--dark)" stroke="var(--border-dark)" stroke-width="1" rx="3"/>`];
+
+  (payload.correlations || []).forEach(c => {
+    const xc = x(Date.parse(c.centre));
+    parts.push(`<line x1="${xc}" y1="8" x2="${xc}" y2="${H - 12}"
+      stroke="${TL_COLORS.window}" stroke-width="2" opacity="0.85"/>`);
+  });
+
+  (payload.events || []).forEach(ev => {
+    const ms = Date.parse(ev.t);
+    if (!Number.isFinite(ms)) return;
+    const laneIdx = TIMELINE_LANES.findIndex(l => l.key === ev.lane);
+    if (laneIdx < 0) return;
+    const fill = ev.lane === 'transaction'
+      ? (ev.direction === 'credit' ? TL_COLORS.credit : TL_COLORS.debit)
+      : TL_COLORS[ev.lane];
+    const y = 11 + laneIdx * 7;
+    parts.push(`<rect x="${x(ms)}" y="${y}" width="1.6" height="5" fill="${fill}" opacity="0.85"/>`);
+  });
+
+  const xs = Math.max(x(t0), GUTTER), xe = Math.min(x(t1), GUTTER + plotW);
+  parts.push(`<rect id="tl-brush" x="${xs}" y="8" width="${Math.max(xe - xs, 2)}" height="${H - 20}"
+    fill="rgba(255,176,32,0.18)" stroke="${TL_COLORS.window}" stroke-width="1.5" rx="2"/>`);
+  parts.push(`<text x="${GUTTER - 10}" y="${H / 2 + 3}" text-anchor="end" class="tl-lane-count">full range</text>`);
+
+  svg.innerHTML = parts.join('');
+
+  if (!svg._wired) {
+    svg._wired = true;
+    const jump = clientX => {
+      const rect = svg.getBoundingClientRect();
+      const frac = Math.max(0, Math.min((clientX - rect.left - GUTTER) / Math.max(rect.width - GUTTER - PAD_R, 1), 1));
+      const centre = timelineState.fullT0 + (timelineState.fullT1 - timelineState.fullT0) * frac;
+      const span = timelineState.t1 - timelineState.t0;
+      timelineState.t0 = centre - span / 2;
+      timelineState.t1 = centre + span / 2;
+      renderTimelineDetail(timelineState.payload);
+      renderTimelineContext(timelineState.payload);
+    };
+    let dragging = false;
+    svg.addEventListener('mousedown', e => { dragging = true; jump(e.clientX); });
+    window.addEventListener('mousemove', e => { if (dragging) jump(e.clientX); });
+    window.addEventListener('mouseup', () => { dragging = false; });
+  }
+}
+
+function selectTimelineEvent(eventId) {
+  const payload = timelineState.payload;
+  if (!payload) return;
+  const ev = (payload.events || []).find(e => e.id === eventId);
+  const panel = document.getElementById('timeline-detail-panel');
+  if (!ev || !panel) return;
+
+  timelineState.selectedEventId = eventId;
+  renderTimelineDetail(payload);
+
+  const rows = [
+    ['Timestamp', tlFormatStamp(ev.t)],
+    ev.t_end ? ['Session ended', tlFormatStamp(ev.t_end)] : null,
+    ['Event type', ev.event_type],
+    ev.amount != null ? ['Amount', `${ev.direction === 'credit' ? '+' : '−'}₹${Number(ev.amount).toLocaleString('en-IN')}`] : null,
+    ev.counterparty ? ['Counterparty', ev.counterparty] : null,
+    ev.location ? ['Location', ev.location] : null,
+    ['Source file', ev.source_file || 'unknown'],
+    ['Row reference', ev.row_ref != null ? `row ${ev.row_ref}` : 'not recorded'],
+  ].filter(Boolean);
+
+  panel.innerHTML = `
+    ${ev.cited ? `<div class="tl-cited-flag"><i class="fa-solid fa-gavel"></i>
+       This row is cited as evidence by a rule that fired on this entity.</div>` : ''}
+    <table class="tl-detail-table">
+      ${rows.map(([k, v]) => `<tr><th>${escapeHTML(k)}</th><td>${escapeHTML(String(v))}</td></tr>`).join('')}
+    </table>`;
+}
+
 /* ── ENTITY NETWORK ─────────────────────────────────────────────── */
 let rawNetworkNodes = [], rawNetworkEdges = [], networkVisData = {};
 
