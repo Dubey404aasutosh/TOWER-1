@@ -326,18 +326,23 @@ def render_money_flow_png(network_graph, scored_entities, entity_id,
         tier = scored_entities.get(node, {}).get("risk_tier", "LOW")
         is_focus = node == entity_id
         ax.scatter([x], [y],
-                   s=520 if is_focus else 260,
+                   s=460 if is_focus else 220,
                    c=tier_colour.get(tier, "#5f6b7a"),
                    edgecolors=INK if is_focus else "white",
                    linewidths=1.8 if is_focus else 0.9,
                    zorder=4)
-        ax.text(x, y, node.replace("ENT_", "E"), fontsize=6.8 if is_focus else 6.0,
-                ha="center", va="center", color="white",
-                fontweight="bold", zorder=6)
+        # Captions sit BELOW the marker in dark ink. Drawn inside it as white text
+        # they were wider than the dot, so everything overhanging the circle fell on
+        # white paper and vanished — "ENT_0021" rendered as "002".
+        caption = node.replace("ENT_", "E")
         if tier != "LOW":
-            ax.text(x, y - (0.17 if is_focus else 0.13), tier,
-                    fontsize=5.6, ha="center", va="top", color=tier_colour.get(tier, MUTED),
-                    fontweight="bold", zorder=6)
+            caption += f"\n{tier}"
+        ax.text(x, y - (0.14 if is_focus else 0.11), caption,
+                fontsize=6.4 if is_focus else 5.8,
+                ha="center", va="top", color=INK,
+                fontweight="bold" if is_focus else "normal", zorder=6,
+                linespacing=1.25,
+                bbox=dict(boxstyle="round,pad=0.14", fc="white", ec="none", alpha=0.78))
 
     ax.set_xlim(-1.35, 1.35)
     ax.set_ylim(-1.25, 1.2)
