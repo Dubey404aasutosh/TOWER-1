@@ -10,10 +10,20 @@ Precision is the one number still under target — see the Day 1 note below: the
 **ground-truth labelling artifact that S3.1 fixes**, not a detection regression.
 
 **After Day 2 (measured):** recall **100%** / precision **62.5%** / F1 **76.9%** · **CRITICAL = 5** ·
-**all 7 rules fire — no dead rules** · pipeline **8.16s @ 2,404 events** · `pytest backend/tests/` **54 passed** ·
+**all 7 rules fire — no dead rules** · `pytest backend/tests/` **54 passed** ·
 timeline view live · network filters live · evidence drill-down live · `.docx` ships with embedded charts.
 **All five Day 2 items are done.** Precision is unchanged and still the S3.1 labelling artifact —
 IDR-1 added a firing on an entity that was already flagged, so it could not move the number either way.
+
+> ⚠️ **Pipeline runtime is worse than previously recorded, and the earlier figures were measured
+> wrong.** Over `POST /api/run-pipeline` on a single clean server — the path a judge actually
+> triggers — 6 consecutive runs measured **15.8 / 19.2 / 19.5 / 19.9 / 21.0 / 18.8 s, median ≈19s**.
+> A bare `python` process calling `run_pipeline()` in a loop gives **6–20s** and warms down toward
+> 6s, which is where the "8.2s" and Day 1's "9.1s" came from — those are best-case numbers from an
+> unrepresentative harness, not the demo path. Two duplicated `uvicorn` processes were also
+> inflating some earlier samples and have been cleaned up; the ~19s figure is after that.
+> **The "< 10s" checklist line is NOT met.** This makes **S3.2 mandatory on Day 3, not optional** —
+> and S3.2's own measurements should be re-taken over the API, not in-process.
 
 > **The core problem is not missing code — it is disconnected code.** The money-flow graph, the trace endpoint, the chart renderers, and the progress callback are all already built and simply never called. Most P0 items below are wiring, not algorithms.
 
