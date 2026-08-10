@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="style.css?v=23">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230F172A'/%3E%3Cpath d='M16 6l8 3v7c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V9l8-3z' fill='%23F97316'/%3E%3C/svg%3E">
 </head>
 <body style="background: var(--ref-bg-app); overflow: hidden;">
 
@@ -234,6 +235,7 @@
           <div class="card">
             <div class="card-header">
               <div class="card-title">Active Investigation Cases</div>
+              <span class="tag" style="opacity:0.8;" title="Case management is out of scope for this build — there is no case entity in the backend. These rows illustrate the intended workflow; every figure sourced from the analysis engine appears in the KPI tiles, Pipeline Activity, Persons of Interest and Evidence Vault.">Illustrative workflow · not from this run</span>
               <button class="btn btn-ghost btn-sm" onclick="switchView('cases',document.querySelector('[data-view=cases]'))">
                 View all <i class="fa-solid fa-arrow-right"></i>
               </button>
@@ -393,6 +395,7 @@
         <div class="card">
           <div class="card-header">
             <div class="card-title">Investigation Registry</div>
+            <span class="tag" style="opacity:0.8;" title="Case management is out of scope for this build — no case entity exists in the backend. Live analysis output is on the Dashboard, Persons of Interest and Evidence Vault screens.">Illustrative workflow · not from this run</span>
             <span class="tag tag-orange" id="case-count">8 cases</span>
           </div>
           <table class="data-table">
