@@ -343,9 +343,12 @@ def check_tcs1(entity_id, enriched_txns):
         evidence = []
         details = []
         for _, row in flagged.iterrows():
-            txn_ref = f"bank_row_{row.get('raw_row_ref', 'N/A')}"
-            call_ref = f"cdr_row_{row.get('call_row_ref', 'N/A')}"
-            session_ref = f"ipdr_row_{row.get('session_row_ref', 'N/A')}"
+            # merge_asof promotes an int column to float64 as soon as one row goes
+            # unmatched, which is how "cdr_row_1018.0" ended up quoted as a source
+            # reference in decision_trace.jsonl. A row number is an integer.
+            txn_ref = f"bank_row_{_row_ref_text(row.get('raw_row_ref'))}"
+            call_ref = f"cdr_row_{_row_ref_text(row.get('call_row_ref'))}"
+            session_ref = f"ipdr_row_{_row_ref_text(row.get('session_row_ref'))}"
             evidence.extend([txn_ref, call_ref, session_ref])
 
             amt = abs(row.get('amount', 0))
