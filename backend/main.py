@@ -349,8 +349,12 @@ def serialize_identity_graph(identity_graph, id_types, entity_map, scored_entiti
             "institution": node_inst,
         })
 
-    for u, v, data in identity_graph.edges(data=True):
+    for i, (u, v, data) in enumerate(identity_graph.edges(data=True)):
         edges.append({
+            # Stable id so the filter layer can address this edge in the vis.js
+            # DataSet. Without one, vis auto-generates an id the client cannot
+            # match back to the payload, and hiding an edge becomes impossible.
+            "id": f"idl_{i}",
             "from": u,
             "to": v,
             "label": data.get("source", ""),
