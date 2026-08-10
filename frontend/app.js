@@ -1893,16 +1893,18 @@ function initNetworkWithData(data) {
     document.getElementById('inspector-body').innerHTML = `<p class="inspector-hint"><i class="fa-solid fa-hand-pointer"></i> Click a node to inspect entity details.</p>`;
   });
 
-  // Wiring up filters
+  // Wiring up filters. The risk dropdown used to be wired here to an element that
+  // did not exist anywhere in dashboard.html — it is now built by
+  // buildNetworkFilterBar(), which also attaches its own listener.
   const searchInput = document.getElementById('network-search-input');
   if (searchInput && !searchInput._wired) {
     searchInput._wired = true;
-    searchInput.addEventListener('input', () => applyNetworkFilters());
-  }
-  const riskFilter = document.getElementById('network-risk-filter');
-  if (riskFilter && !riskFilter._wired) {
-    riskFilter._wired = true;
-    riskFilter.addEventListener('change', () => applyNetworkFilters());
+    let debounce = null;
+    searchInput.addEventListener('input', e => {
+      networkFilterState.search = e.target.value;
+      clearTimeout(debounce);
+      debounce = setTimeout(applyNetworkFilters, 140);
+    });
   }
   const resetBtn = document.getElementById('btn-reset-network');
   if (resetBtn && !resetBtn._wired) {
