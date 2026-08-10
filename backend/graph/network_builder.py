@@ -131,11 +131,29 @@ def build_network_graph(all_events_df, scored_entities, entities):
                 'dst': dst.values,
                 'amount_abs': valid['amount_abs'].values,
                 'source_file': valid['source_file'].values,
+                'is_debit': (valid['amount'] < 0).values,
             })
-            agg = edge_df.groupby(['src', 'dst']).agg(
+
+            # ---- Deduplicate the two sides of one transfer ----
+            # When both parties' statements are ingested, a single transfer appears
+            # twice: as a debit in the sender's statement and as a credit in the
+            # receiver's. They carry different UTRs, so they cannot be matched on a
+            # reference — but they are the same movement of money, and summing both
+            # doubles the edge weight. (Measured: a real ₹275,659 layering hop was
+            # reported as ₹551,318.)
+            #
+            # Rule: for each (src, dst) pair, count the debit rows — the sender's own
+            # record of money leaving. Credit rows are used only when no debit row for
+            # that pair was ingested at all, so an edge is never lost, just never
+            # counted twice.
+            has_debit = edge_df.groupby(['src', 'dst'])['is_debit'].transform('any')
+            deduped = edge_df[edge_df['is_debit'] | ~has_debit]
+
+            agg = deduped.groupby(['src', 'dst']).agg(
                 weight=('amount_abs', 'sum'),
                 count=('amount_abs', 'size'),
                 source_file=('source_file', 'first'),
+                from_debit=('is_debit', 'any'),
             ).reset_index()
 
             for row in agg.itertuples(index=False):
@@ -144,7 +162,10 @@ def build_network_graph(all_events_df, scored_entities, entities):
                            weight=row.weight, count=int(row.count),
                            edge_type='transaction',
                            source_file=str(row.source_file),
-                           institution=inst)
+                           institution=inst,
+                           # False = only the receiving side's statement was ingested,
+                           # so this edge is evidenced by the counterparty's record.
+                           counted_from_debit=bool(row.from_debit))
 
     # ---- Add call edges (vectorized aggregation by frequency) ----
     calls = all_events_df[all_events_df['event_type'].isin(['call', 'sms'])].copy()

@@ -225,6 +225,8 @@ def serialize_money_flow_graph(network_graph, scored_entities, entities, max_nod
             # fit in a ~6px range of stroke widths.
             width = 1.4 + min(math.log10(max(weight, 1)) / 1.3, 5.0)
             title = f"{u} → {v}\n{_fmt_inr(weight)} across {count} transfer(s)"
+            if not data.get("counted_from_debit", True):
+                title += "\n(from the receiving statement — sender's not ingested)"
         else:
             meta["call_edges"] += 1
             freq = int(data.get("call_frequency", count) or 1)
