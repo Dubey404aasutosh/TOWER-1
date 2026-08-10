@@ -137,6 +137,7 @@ def build_network_graph(all_events_df, scored_entities, entities):
                     ml_anomaly=ml_flag,
                     institution=primary_inst,
                     institutions=inst_list,
+                    cities=entity_cities.get(entity_id, []),
                     source_files=sorted(list(entity_sources.get(entity_id, []))),
                     phones=entity_data.get("phones", []),
                     accounts=entity_data.get("accounts", []),
@@ -177,6 +178,9 @@ def build_network_graph(all_events_df, scored_entities, entities):
                 'amount_abs': valid['amount_abs'].values,
                 'source_file': valid['source_file'].values,
                 'is_debit': (valid['amount'] < 0).values,
+                # Carried so an edge knows when its transfers happened — a time
+                # filter over aggregated edges needs a span, not just a total.
+                'timestamp': valid['timestamp'].values if 'timestamp' in valid.columns else pd.NaT,
             })
 
             # ---- Deduplicate the two sides of one transfer ----
