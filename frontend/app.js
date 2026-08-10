@@ -1743,6 +1743,17 @@ function setNetworkView(kind, btn) {
   }
   initNetworkWithData(networkViews[kind]);
   renderNetworkMeta(networkViews[kind].meta, kind);
+
+  // Filters do not carry across a view switch: the two graphs share almost no
+  // fields, so a tier filter left over from money-flow would blank the identity
+  // graph for no visible reason.
+  resetNetworkFilterState();
+  const search = document.getElementById('network-search-input');
+  if (search) search.value = '';
+  const facets = (networkViews[kind].meta || {}).facets || {};
+  buildNetworkQuickFilters(kind, facets);
+  buildNetworkFilterBar(kind, facets);
+  applyNetworkFilters();
 }
 
 function renderNetworkLegend(kind) {
