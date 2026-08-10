@@ -56,36 +56,84 @@ def _get_entity_df(entity_id, df):
 
 
 # ============================================================
-# RULE IDR-1: Identity Fan-out (SIM Swap / Device Upgrade Check with Sub-levels)
+# RULE IDR-1: Identity Fan-out
 # ============================================================
-def check_idr1(entity_id, entity_data, all_events_df=None, window_minutes=60):
+# Documented definition (correlation.md): "One resolved entity linked to 3+ distinct
+# accounts or 2+ IMEIs — mule/evasion signature".
+#
+# The implementation used to look for something else entirely: an IMEI or IMSI
+# *changing between consecutive events* on one number. That is a SIM-swap test, not
+# a fan-out test, and it is why IDR-1 fired 0x on every entity in the dataset — the
+# planted fan-out entity (E044) holds ONE IMEI that never changes, operating three
+# MSISDNs and three accounts. The rule was hunting for the opposite of the pattern
+# it exists to catch, so the one entity it was written for was invisible to it.
+#
+# Both readings describe a real identity anomaly, so both are kept as limbs of one
+# coherent rule: an identity spread across more identifiers than a single ordinary
+# subscriber holds.
+#   STATIC  fan-out — one handset driving several numbers, or one person holding an
+#                     implausible number of accounts/devices at once.
+#   TEMPORAL fan-out — the device or SIM behind a number changes (swap / takeover).
+#
+# Thresholds are the documented ones, named rather than buried as literals.
+IDR1_MIN_ACCOUNTS = 3          # "3+ distinct accounts"
+IDR1_MIN_IMEIS = 2             # "2+ IMEIs"
+IDR1_MIN_MSISDN_PER_IMEI = 2   # one handset operating 2+ numbers = device fan-out
+
+_SEVERITY_RANK = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
+
+
+def _clean_id_set(values):
+    """Normalise an identifier collection, dropping blanks and null-ish strings."""
+    out = set()
+    for value in values or []:
+        text = str(value).strip()
+        if text and text.lower() not in ("nan", "none", "null", "<na>"):
+            out.add(text)
+    return out
+
+
+def _detect_device_fanout(entity_df):
     """
-    IDR-1: Identity Fan-out (SIM Swap / Device Upgrade Detection with Risk Sub-levels)
+    Find handsets operating more than one MSISDN.
 
-    Sub-levels & Severities:
-    - HIGH / CRITICAL signal: BOTH IMEI and IMSI change together (or within a short window) on the same MSISDN.
-      (Strongest indicator of a fraudulent SIM + Device swap).
-    - MEDIUM signal: Only ONE identifier (IMEI or IMSI) changes, BUT a financial transaction occurs within the correlation window (30-60 min) of the change.
-    - LOW signal: Only ONE identifier (IMEI or IMSI) changes, and NO financial transaction occurs within the correlation window of the change.
-      (Informational / routine store SIM replacement or handset upgrade).
+    This is the strongest fan-out signal in telephony evidence: a single IMEI
+    cycling SIMs is the standard mule-farm and burner signature, whereas holding
+    several accounts can have innocent explanations.
+
+    Returns {imei: {msisdn, ...}} for every IMEI over the threshold.
     """
-    if all_events_df is None or all_events_df.empty:
-        return False, "", [], "LOW"
+    if entity_df.empty or 'imei' not in entity_df.columns or 'entity_ref' not in entity_df.columns:
+        return {}
 
-    # Get all events belonging to this entity
-    entity_df = _get_entity_df(entity_id, all_events_df)
-    if entity_df.empty and entity_data:
-        phones = entity_data.get('phones', [])
-        if phones:
-            entity_df = all_events_df[all_events_df['entity_ref'].astype(str).isin([str(p) for p in phones])]
+    cdr = entity_df[entity_df['imei'].notna()]
+    if cdr.empty:
+        return {}
 
-    if entity_df.empty:
-        return False, "", [], "LOW"
+    shared = {}
+    for imei, group in cdr.groupby('imei'):
+        imei_text = str(imei).strip()
+        if not imei_text or imei_text.lower() in ("nan", "none"):
+            continue
+        msisdns = _clean_id_set(group['entity_ref'].dropna().unique())
+        if len(msisdns) >= IDR1_MIN_MSISDN_PER_IMEI:
+            shared[imei_text] = msisdns
+    return shared
 
+
+def _detect_identifier_swap(entity_df, window_minutes):
+    """
+    The original temporal limb: an IMEI or IMSI changing between consecutive events
+    on the same number, i.e. the device or the SIM behind a number was replaced.
+
+    Returns (severity, description, evidence) or None. Severity is HIGH when device
+    and SIM change together, MEDIUM when a single identifier changes near a
+    financial transaction, LOW otherwise (a routine handset upgrade).
+    """
     has_imei = 'imei' in entity_df.columns
     has_imsi = 'imsi' in entity_df.columns
     if not has_imei and not has_imsi:
-        return False, "", [], "LOW"
+        return None
 
     group_col = 'entity_ref' if 'entity_ref' in entity_df.columns else 'entity_id'
 
