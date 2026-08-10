@@ -45,6 +45,24 @@ def clear_trace():
         TRACE_FILE.unlink()
 
 
+def _row_ref_text(value):
+    """
+    Render a row reference as it appears in the source file.
+
+    Row numbers travel through pandas joins that promote int64 to float64 on any
+    unmatched row, so a reference can arrive as 1018.0. These strings are quoted in
+    a court exhibit — an integer row number must not print a decimal point.
+    """
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "N/A"
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    text = str(value).strip()
+    if text.endswith(".0") and text[:-2].isdigit():
+        return text[:-2]
+    return text or "N/A"
+
+
 def _get_entity_df(entity_id, df):
     if df is None or df.empty:
         return pd.DataFrame()
