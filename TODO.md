@@ -302,7 +302,56 @@ Restores advertised functionality. Every item is a defect fix, not a feature.
 
 ---
 
-# 🟠 P1 — DAY 2 · Fill the rubric holes with zero coverage (~11h)
+# 🟠 P1 — DAY 2 · Fill the rubric holes with zero coverage (~11h) — ✅ **DONE**
+
+> **Day 2 completed & verified.** `pytest backend/tests/` → **54 passed** (was 48).
+> Pipeline **8.16s @ 2,404 events**. Measured, before → after:
+>
+> | | After Day 1 | After Day 2 |
+> |---|---|---|
+> | Dead rules | **IDR-1 (fires 0×)** | **none — all 7 fire** |
+> | CRITICAL entities | 4 | **5** |
+> | Timeline (FR-II.a) | **does not exist** | live view + API + chart in the `.docx` |
+> | Network filters (FR-IV.b) | `applyNetworkFilters()` was `{ }` | amount · time · city · rule · tier · search, per view |
+> | Evidence drill-down | endpoint called from nowhere | source rows under every rule chip |
+> | Charts in the report | `timeline_fig=None, network_fig=None` | 2 figures per forensic `.docx`, 1 per STR |
+> | Recall / Precision / F1 | 100% / 62.5% / 76.9% | **unchanged** (precision is still the S3.1 artifact) |
+>
+> **Rendered and inspected in headless Chrome** (CDP, live DOM read back, not just screenshots):
+> the timeline draws 56 markers across 3 lanes for `ENT_0007`; the "Correlation window" preset
+> zooms to a 60-minute span; clicking the largest marker on `ENT_0043` reports
+> *2025-06-07 11:00:00 · +₹5,00,000 · bank_icici.pdf · row 190* flagged as cited evidence — the
+> very row Day 1's PDF fix recovered. Filters verified against live DataSet counts:
+> tier=CRITICAL → 5 nodes, rule=LAY-1 → 3 nodes, "Layering chain" → 4 edges, amount ≥₹1,00,200 →
+> 165 of 617 edges, search `ENT_0042` → 9 nodes. **Console clean — 0 errors, 0 failed requests.**
+>
+> ⚠️ **Two scope decisions worth knowing, both measured:**
+> 1. **Report charts use matplotlib, not Plotly/kaleido.** Kaleido works, but was measured at
+>    **~3.5 s per image and it does not amortise** (it drives a headless Chrome per render). At
+>    8 flagged entities × 2 figures that is ~56 s bolted onto the pipeline. The same figures take
+>    **~0.1 s each** through matplotlib. The TODO pre-authorised this fallback; the Plotly path is
+>    still wired and selectable via `renderer="plotly"` rather than discarded.
+> 2. **Reports are generated on demand, not in bulk inside the pipeline.** Charting all 8
+>    HIGH/CRITICAL entities inline cost ~17 s on top of an 8 s pipeline, against a "runs in
+>    seconds" requirement — and nothing consumed the pre-generated files, since the UI links
+>    straight to `/api/download-report/{id}`. One report now costs **1.9 s** when actually asked
+>    for. `/api/run-pipeline` clears stale reports first, so a re-run on a new dataset can never
+>    serve the previous dataset's `.docx`.
+>
+> **Also fixed while building these — none were on any list:**
+> `MOCK_REPORTS` (invented case numbers, invented "23 Jul 2026" dates, invented "SEALED"
+> statuses, and tiers that contradicted the engine — it called `ENT-0042` HIGH when the engine
+> says CRITICAL) replaced with the real flagged set. Its download links, and a hardcoded one in
+> the case slide-over, pointed at **`ENT-0037` with a hyphen** — an id the API has never issued,
+> so **every "Download Report" button 404'd**, which is demo step 8. `vis.js` rejected
+> `arrows: 'none'` and logged an options error on every identity-view load. The evidence panel
+> rendered missing fields as the literal string **`nan`**. Row references printed as
+> **`cdr_row_1018.0`** (the P3 float-ref item — fixed early, because these are now shown to a
+> judge as court references). `.gitignore` whitelisted the committed sample `.docx` pair **by two
+> specific timestamped filenames that no longer existed**, and `clear_old_reports()` deleted every
+> `.docx` including them — so a fresh clone that ran the pipeline destroyed a checked-in
+> deliverable. Samples are now `sample_*.docx`, whitelisted by prefix and skipped by both
+> clearing paths.
 
 These are requirement lines currently scoring near zero. Backend and frontend tracks are parallelizable.
 
