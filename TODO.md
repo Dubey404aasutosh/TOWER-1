@@ -260,7 +260,7 @@ Restores advertised functionality. Every item is a defect fix, not a feature.
     they never left the backend, so the UI could not explain the difference between two
     entities with the same rule list.
 
-- [ ] **S1.6 — IDR-1 fires 0×: the second dead rule** ⏱ ~1h 🔴 **NEW — found on Day 1**
+- [x] **S1.6 — IDR-1 fires 0×: the second dead rule** ⏱ ~1h 🔴 **NEW — found on Day 1**
   - Not on the original list. With LAY-1 alive, **IDR-1 is now the only rule that never fires**,
     on any entity, anywhere in the dataset.
   - `E044` is the *planted* identity-fan-out entity and is detected only incidentally, by STR-1.
