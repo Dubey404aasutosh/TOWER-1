@@ -16,7 +16,20 @@ Precision is the one number still under target — see the Day 1 note below: the
 ## Cut line
 
 If you fall behind, **ship P0 + P1 and skip P2 entirely.** P0 alone takes you from 48% → ~62%. P0+P1 → ~78%.
-Never cut: `S0.1` (fabricated hashes), `S1.1` (LAY-1), `S1.4` (money-flow graph).
+~~Never cut: `S0.1` (fabricated hashes), `S1.1` (LAY-1), `S1.4` (money-flow graph).~~
+✅ **All three un-cuttables are shipped.** P0 and Day 0 are done.
+
+**Revised cut line for what's left.** Two items are now un-cuttable, for different reasons:
+- **`S1.6` (IDR-1 fires 0×)** — a rule the README advertises does nothing. Same credibility class
+  as the fabricated hashes: it is *dishonest*, not merely incomplete. ~1h.
+- **`S2.1` (timeline)** — the last named requirement (FR-II.a) with **zero** implementation, and
+  the demo's step 5. Everything else on the list improves something that already exists.
+
+Cheapest-first ordering for Day 2, based on what Day 1 left in place:
+**S2.4 (~20m, the plumbing is already written) → S1.6 (~1h) → S2.3 (~1h, half done) → S2.2 (3h) → S2.1 (4h).**
+If time runs out, cut **S2.2** — a judge asking to filter is a worse look than a judge asking
+about a rule that never fires, but it is the only one of the five that costs 3h and breaks nothing
+by its absence.
 
 ---
 
