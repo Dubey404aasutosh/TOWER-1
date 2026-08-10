@@ -1226,9 +1226,14 @@ function openSlideOver(caseId) {
     </div>
 
     <div style="display:flex;gap:8px;margin-top:8px;">
-      <a href="${API_BASE}/api/download-report/ENT-0037" class="btn btn-primary btn-sm">
-        <i class="fa-solid fa-file-word"></i> Download Report
-      </a>
+      ${REPORTS.length
+        // Was hardcoded to "ENT-0037" — a hyphenated id the API has never issued,
+        // so this button 404'd on every click. It now targets the highest-tier
+        // entity of the current run, and disappears when nothing is flagged.
+        ? `<a href="${API_BASE}/api/download-report/${encodeURIComponent(REPORTS[0].entityId)}" class="btn btn-primary btn-sm">
+             <i class="fa-solid fa-file-word"></i> Download Report (${REPORTS[0].entityId})
+           </a>`
+        : ''}
       <button class="btn btn-ghost btn-sm" onclick="closeCopilot();toggleCopilot()">
         <i class="fa-solid fa-robot"></i> Ask Copilot
       </button>
