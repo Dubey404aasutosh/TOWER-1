@@ -1052,8 +1052,23 @@ async function fetchDecisionTrace() {
 function populateReports() {
   const grid = document.getElementById('reports-grid');
   if (!grid) return;
-  grid.innerHTML = MOCK_REPORTS.map(r => {
+
+  if (!REPORTS.length) {
+    grid.innerHTML = `
+      <div class="report-card" style="opacity:0.7;">
+        <i class="fa-solid fa-circle-info report-icon" style="color:#9BA1A8;font-size:24px;"></i>
+        <div>
+          <div class="report-title">No reports available</div>
+          <div class="report-meta">No entity reached HIGH or CRITICAL in the current run,
+            or the pipeline has not been executed yet.</div>
+        </div>
+      </div>`;
+    return;
+  }
+
+  grid.innerHTML = REPORTS.map(r => {
     const tierClass = r.tier === 'CRITICAL' ? 'tag-danger' : r.tier === 'HIGH' ? 'tag-warn' : 'tag-blue';
+    const rules = r.rules.length ? r.rules.join(' · ') : 'no rules fired';
     return `
       <div class="report-card">
         <div style="display:flex;align-items:center;justify-content:space-between;">
@@ -1061,30 +1076,23 @@ function populateReports() {
           <span class="tag ${tierClass}">${r.tier}</span>
         </div>
         <div>
-          <div class="report-title">${r.title}</div>
-          <div class="report-meta">${r.case} · ${r.created}</div>
+          <div class="report-title">${r.entityId} — ${r.name}</div>
+          <div class="report-meta">${rules}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
-          <span class="tag ${r.status === 'SEALED' ? 'tag-green' : 'tag-blue'}">
-            <i class="fa-solid ${r.status === 'SEALED' ? 'fa-lock' : 'fa-file'}"></i> ${r.status}
-          </span>
+          <span class="tag tag-blue"><i class="fa-solid fa-bolt"></i> GENERATED ON DEMAND</span>
         </div>
         <div class="report-actions">
-          <a href="${API_BASE}/api/download-report/${r.id.replace('RPT-', 'ENT-0')}" class="btn btn-ghost btn-sm">
-            <i class="fa-solid fa-download"></i> Download
+          <a href="${API_BASE}/api/download-report/${encodeURIComponent(r.entityId)}" class="btn btn-ghost btn-sm">
+            <i class="fa-solid fa-file-word"></i> Forensic
           </a>
-          <button class="btn btn-ghost btn-sm" onclick="previewReport('${r.id}')"><i class="fa-solid fa-eye"></i> Preview</button>
+          <a href="${API_BASE}/api/download-str-report/${encodeURIComponent(r.entityId)}" class="btn btn-ghost btn-sm">
+            <i class="fa-solid fa-file-shield"></i> STR
+          </a>
         </div>
       </div>
     `;
   }).join('');
-}
-
-function previewReport(reportId) {
-  const r = MOCK_REPORTS.find(x => x.id === reportId);
-  if (r && r.case) {
-    openSlideOver(r.case);
-  }
 }
 
 /* ── COMMAND PALETTE ────────────────────────────────────────────── */
