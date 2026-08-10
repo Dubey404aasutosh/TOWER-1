@@ -380,8 +380,29 @@ These are requirement lines currently scoring near zero. Backend and frontend tr
   - 🔗 Shares its blocker with **S2.4** (both need a figure past `forensic_report.py:540`); doing
     S2.4's one-line unhardcode first means S2.1's figure lands in the `.docx` for free.
   - 🏆 Earns: FR-II.a + evaluation criterion #4.
+  - **✅ Shipped as a new "Unified Timeline" view**, plus `GET /api/entity/{id}/timeline`.
+    `build_unified_timeline()` now has call sites: a new `build_timeline_payload()` wraps it and
+    is the **single source both the screen and the `.docx` chart read**, so the exhibit and the
+    UI cannot disagree about an entity's chronology.
+  - **The obvious implementation would have failed, and measuring it is what caught that.** The
+    dataset spans six weeks; a ±10-minute correlation window is ~0.02% of that axis. Rendered at
+    full range the decisive moment is a literal hairline — the screen the PS calls the centrepiece
+    would have shown nothing. Both renderers therefore use focus+context: the UI has a full-range
+    strip you can drag plus a **"Correlation window"** preset that walks the windows in order of
+    probative weight, and the report chart draws a second zoomed panel underneath the overview.
+  - Drawn as hand-written SVG — no library was loaded and the interaction is the point. Three
+    lanes, marker radius log-scaled by amount, IP sessions drawn as their real duration rather
+    than as points, rows cited by a rule ringed in white, click → the source row.
+  - 💡 **The demo lands on `ENT_0043`, not `ENT_0042`.** One 20-minute window on 7 June contains
+    an IP session at 10:52, the **₹5,00,000 credit at 11:00**, and a call at 11:08 — three
+    separate datasets intersecting, with `bank_icici.pdf row 190` named underneath. That is the
+    row Day 1's PDF fix recovered, so steps 2 and 5 of the demo now tell one continuous story.
+    `ENT_0042` remains the better *money-flow* story for step 4.
+  - ⚠️ The preset deliberately opens on the **most probative** window rather than the earliest.
+    Chronological order opened the mule's timeline on a ₹113 transfer; the ranking now matches
+    the one the report uses to choose its zoom panel.
 
-- [ ] **S2.2 — Filters: amount, time window, location** ⏱ 3h 🔴
+- [x] **S2.2 — Filters: amount, time window, location** ⏱ 3h 🔴
   - FR-IV.b is at **~10%**. Re-checked line numbers: `applyNetworkFilters()` is literally `{ }` at
     **`frontend/app.js:1894`**; `applyNetworkFilter(type, btn)` at **`app.js:1889`** only toggles a
     CSS class. The four buttons are at `dashboard.html:487-490`.
