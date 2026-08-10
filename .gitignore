@@ -7,8 +7,10 @@ __pycache__/
 .system_generated/
 
 # Generated forensic/STR reports — regenerated per pipeline run, not source.
-# Keep only the committed sample deliverable pair via the negation rules below.
+# The committed sample deliverables are the "sample_*" pair. Whitelisting them by
+# a stable prefix rather than by timestamped filename means regenerating the
+# samples does not silently drop them from the repo, which is what happened when
+# these rules named two specific timestamps that later stopped existing.
 reports/*.docx
 backend/reports/*.docx
-!backend/reports/forensic_report_ENT_0037_20260809_191632.docx
-!backend/reports/str_report_ENT_0037_20260809_191632.docx
+!backend/reports/sample_*.docx
