@@ -1958,7 +1958,13 @@ function populateInspector(node) {
       </div>
       <div style="margin-top:10px;font-size:11.5px;color:var(--text-muted);">Institution</div>
       <div style="font-size:12px;">${escapeHTML(node.institution || 'Unknown')}</div>
+      <div id="inspector-evidence" style="margin-top:14px;border-top:1px solid var(--border-subtle);padding-top:10px;">
+        ${rules.length
+          ? '<div style="font-size:11px;color:var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> Loading evidence rows…</div>'
+          : ''}
+      </div>
     `;
+    if (rules.length) loadInspectorEvidence(node.entity_id);
     return;
   }
 
