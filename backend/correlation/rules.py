@@ -331,112 +331,228 @@ def check_str1(entity_id, all_events_df, threshold=50000, count_min=3, window_ho
 # ============================================================
 # RULE LAY-1: Layering / Circular Flow
 # ============================================================
-def check_lay1(entity_id, all_events_df, entity_map=None, min_hops=3, max_hours=12):
+# LAY-1 tuning constants. These are the documented thresholds — the explanation
+# string reports the measured values against them, it never asserts a pattern
+# that was not checked.
+LAY1_MIN_AMOUNT = 50000.0   # INR. Matches the CTR reporting threshold the layering
+                            # is attempting to evade; below this a shrinking chain of
+                            # transfers is ordinary retail behaviour, not layering.
+LAY1_MIN_SKIM = 0.03        # Each hop must lose at least 3% (a genuine commission),
+LAY1_MAX_SKIM = 0.20        # and at most 20%. Documented typology is a 5-15% skim;
+                            # the band carries a small tolerance on either side.
+LAY1_MAX_DEPTH = 6          # Hard cap on DFS depth — the search is otherwise
+                            # exponential in the branching factor.
+
+
+def build_outgoing_index(all_events_df):
     """
-    LAY-1: Layering
-    A chain of transfers across 3+ entities within hours,
-    amounts shrinking 5-15% per hop, forming a cycle or near-cycle.
+    Build {entity_id: [outgoing transfer, ...]} once for the whole dataset.
+
+    Each entry is a plain dict holding only the four fields the LAY-1 walk needs,
+    which keeps the per-hop scan cheap. Every entity's list is in ascending
+    timestamp order, so the walk can stop scanning a list as soon as it passes the
+    time window.
+
+    Built once per run and handed to check_lay1 explicitly: the previous
+    `id(all_events_df)` memo was unsound, because CPython reuses id() values after
+    a garbage collection and two different frames could silently share one map.
     """
-    if all_events_df.empty or not entity_map:
+    if all_events_df is None or all_events_df.empty:
+        return {}
+    if 'event_type' not in all_events_df.columns or 'amount' not in all_events_df.columns:
+        return {}
+
+    txns = all_events_df[
+        (all_events_df['event_type'] == 'transaction') & (all_events_df['amount'] < 0)
+    ].copy()
+    if txns.empty:
+        return {}
+
+    txns['timestamp'] = pd.to_datetime(txns['timestamp'])
+    txns = txns.sort_values('timestamp')
+
+    outgoing_by_entity = defaultdict(list)
+    for eid, ts, cp, amt, ref in zip(
+        txns['entity_id'],
+        txns['timestamp'],
+        txns['counterparty'] if 'counterparty' in txns.columns else [None] * len(txns),
+        txns['amount'].abs(),
+        txns['raw_row_ref'] if 'raw_row_ref' in txns.columns else [None] * len(txns),
+    ):
+        outgoing_by_entity[eid].append({
+            "timestamp": ts,
+            "counterparty": "" if cp is None or pd.isna(cp) else str(cp).strip(),
+            "amount": float(amt),
+            "raw_row_ref": ref,
+        })
+
+    return dict(outgoing_by_entity)
+
+
+def check_lay1(entity_id, all_events_df, entity_map=None, min_hops=3, max_hours=12,
+               outgoing_by_entity=None, min_amount=LAY1_MIN_AMOUNT,
+               min_skim=LAY1_MIN_SKIM, max_skim=LAY1_MAX_SKIM, max_depth=LAY1_MAX_DEPTH):
+    """
+    LAY-1: Layering / Circular Flow
+
+    Walks the transfer graph outward from `entity_id`, following hops that occur
+    within `max_hours` of the previous hop and lose between `min_skim` and
+    `max_skim` of their value (the commission the layer takes). A chain qualifies
+    at `min_hops` distinct entities.
+
+    A hop that returns to the entity the chain started from closes a **cycle** —
+    that is checked for explicitly and reported only when it actually happened.
+    Intermediate entities may not be revisited, which is what bounds the walk.
+
+    `outgoing_by_entity` is the shared index from build_outgoing_index(); pass it
+    to avoid rebuilding the map per entity. If omitted it is built from
+    `all_events_df`, which must therefore be the GLOBAL event frame — a chain
+    spans several entities, so a single entity's rows can never contain one.
+    """
+    if not entity_map:
         return False, "", []
 
-    # Cache the processed transactions map to avoid rebuilding it for every single entity
-    cache_key = id(all_events_df)
-    if not hasattr(check_lay1, "_cache_key") or check_lay1._cache_key != cache_key:
-        txns = all_events_df[all_events_df['event_type'] == 'transaction'].copy()
-        txns['timestamp'] = pd.to_datetime(txns['timestamp'])
-        outgoing_txns = txns[txns['amount'] < 0].sort_values('timestamp')
-        
-        outgoing_by_entity = defaultdict(list)
-        for _, txn in outgoing_txns.iterrows():
-            eid = txn['entity_id']
-            outgoing_by_entity[eid].append(txn)
-            
-        check_lay1._cache = outgoing_by_entity
-        check_lay1._cache_key = cache_key
-
-    outgoing_by_entity = check_lay1._cache
+    if outgoing_by_entity is None:
+        if all_events_df is None or all_events_df.empty:
+            return False, "", []
+        outgoing_by_entity = build_outgoing_index(all_events_df)
 
     # Get outgoing transactions from this entity
     outgoing = outgoing_by_entity.get(entity_id, [])
     if not outgoing:
         return False, "", []
 
-    longest_chain = []
-    longest_evidence = []
-    longest_amounts = []
-    longest_times = []
+    # Best chain seen so far, ranked by (closes a cycle, number of hops).
+    best = {"chain": [], "evidence": [], "amounts": [], "times": [], "cycle": False}
+
+    def consider(path, path_evidence, path_amounts, path_times, closes_cycle):
+        if len(path) < min_hops:
+            return
+        rank = (closes_cycle, len(path))
+        best_rank = (best["cycle"], len(best["chain"]))
+        if rank > best_rank:
+            best.update(chain=list(path), evidence=list(path_evidence),
+                        amounts=list(path_amounts), times=list(path_times),
+                        cycle=closes_cycle)
 
     def dfs(curr_entity, curr_time, curr_amount, path, path_evidence, path_amounts, path_times):
-        nonlocal longest_chain, longest_evidence, longest_amounts, longest_times
-        
-        if len(path) > len(longest_chain):
-            longest_chain = list(path)
-            longest_evidence = list(path_evidence)
-            longest_amounts = list(path_amounts)
-            longest_times = list(path_times)
+        consider(path, path_evidence, path_amounts, path_times, closes_cycle=False)
 
-        # Get all outgoing transactions from curr_entity after curr_time within max_hours
-        candidates = outgoing_by_entity.get(curr_entity, [])
-        for txn in candidates:
-            t_time = txn['timestamp']
+        if len(path) - 1 >= max_depth:
+            return
+
+        # Outgoing transfers from curr_entity, after curr_time, within max_hours.
+        # The list is timestamp-ordered, so we can stop at the first one past the window.
+        deadline = curr_time + timedelta(hours=max_hours)
+        for txn in outgoing_by_entity.get(curr_entity, []):
+            t_time = txn["timestamp"]
             if t_time <= curr_time:
                 continue
-            if t_time > curr_time + timedelta(hours=max_hours):
+            if t_time > deadline:
                 break
 
-            cp = str(txn.get('counterparty', '')).strip()
+            cp = txn["counterparty"]
             if not cp:
                 continue
             cp_entity = entity_map.get(cp)
-            if not cp_entity or cp_entity in path:
+            if not cp_entity:
                 continue
 
-            # Amount shrinkage: next amount must be less than previous amount
-            # typically 5-15% commission skim. Let's allow between 1% and 40% skim
-            next_amount = abs(txn['amount'])
-            if next_amount < curr_amount * 0.99 and next_amount >= curr_amount * 0.60:
-                dfs(
-                    curr_entity=cp_entity,
-                    curr_time=t_time,
-                    curr_amount=next_amount,
-                    path=path + [cp_entity],
-                    path_evidence=path_evidence + [f"row_{txn.get('raw_row_ref', 'N/A')}"],
-                    path_amounts=path_amounts + [next_amount],
-                    path_times=path_times + [t_time]
-                )
+            # Commission skim: this hop must give up between min_skim and max_skim
+            # of the previous hop's value.
+            next_amount = txn["amount"]
+            if not (curr_amount * (1 - max_skim) <= next_amount <= curr_amount * (1 - min_skim)):
+                continue
+
+            hop_evidence = path_evidence + [f"row_{txn['raw_row_ref']}"]
+            hop_amounts = path_amounts + [next_amount]
+            hop_times = path_times + [t_time]
+
+            if cp_entity == path[0]:
+                # Funds returned to the entity the chain started from: a real cycle.
+                # Record it and stop — walking on through the origin would revisit it.
+                consider(path + [cp_entity], hop_evidence, hop_amounts, hop_times,
+                         closes_cycle=True)
+                continue
+            if cp_entity in path:
+                continue
+
+            dfs(
+                curr_entity=cp_entity,
+                curr_time=t_time,
+                curr_amount=next_amount,
+                path=path + [cp_entity],
+                path_evidence=hop_evidence,
+                path_amounts=hop_amounts,
+                path_times=hop_times,
+            )
 
     for txn in outgoing:
-        cp = str(txn.get('counterparty', '')).strip()
+        cp = txn["counterparty"]
         if not cp:
             continue
         cp_entity = entity_map.get(cp)
         if not cp_entity or cp_entity == entity_id:
             continue
 
-        start_amount = abs(txn['amount'])
+        # Amount floor: only applied to the head of the chain. Later hops are
+        # bounded below by the skim band anyway.
+        start_amount = txn["amount"]
+        if start_amount < min_amount:
+            continue
+
         dfs(
             curr_entity=cp_entity,
-            curr_time=txn['timestamp'],
+            curr_time=txn["timestamp"],
             curr_amount=start_amount,
             path=[entity_id, cp_entity],
-            path_evidence=[f"row_{txn.get('raw_row_ref', 'N/A')}"],
+            path_evidence=[f"row_{txn['raw_row_ref']}"],
             path_amounts=[start_amount],
-            path_times=[txn['timestamp']]
+            path_times=[txn["timestamp"]],
         )
 
-    if len(longest_chain) >= min_hops:
-        time_span = (max(longest_times) - min(longest_times)).total_seconds() / 3600 if longest_times else 0
-        explanation = (
-            f"Layering detected: funds flowed through {len(longest_chain)} entities "
-            f"({' -> '.join(longest_chain)}) within {time_span:.1f} hours. "
-            f"Amounts: {', '.join([f'{a:.0f}' for a in longest_amounts])}. "
-            f"Commission skim pattern confirmed (decreasing amounts)."
-        )
-        _append_trace(entity_id, "LAY-1", longest_evidence, explanation)
-        return True, explanation, longest_evidence
+    chain = best["chain"]
+    if len(chain) < min_hops:
+        return False, "", []
 
-    return False, "", []
+    amounts = best["amounts"]
+    times = best["times"]
+    time_span = (max(times) - min(times)).total_seconds() / 3600 if times else 0
+
+    # Per-hop skim, measured — not assumed.
+    skims = [
+        (amounts[i] - amounts[i + 1]) / amounts[i] * 100
+        for i in range(len(amounts) - 1)
+        if amounts[i]
+    ]
+    skim_text = ", ".join(f"{s:.1f}%" for s in skims) if skims else "n/a"
+
+    if best["cycle"]:
+        shape = (
+            f"Circular flow confirmed: funds left {chain[0]} and returned to it "
+            f"after {len(chain) - 1} hops"
+        )
+    else:
+        shape = (
+            f"Layering chain: funds passed through {len(chain)} entities "
+            f"(no return to {chain[0]} observed within the {max_hours}h window)"
+        )
+
+    explanation = (
+        f"{shape} ({' -> '.join(chain)}) over {time_span:.1f} hours. "
+        f"Amounts: {', '.join(f'{a:.0f}' for a in amounts)}. "
+        f"Value lost per hop: {skim_text} — consistent with a commission skim "
+        f"of {min_skim * 100:.0f}-{max_skim * 100:.0f}% at every hop."
+    )
+
+    evidence = list(best["evidence"])
+    evidence.append(f"cycle:{'true' if best['cycle'] else 'false'}")
+    evidence.append(f"hops:{len(chain) - 1}")
+    if skims:
+        evidence.append("skim_pct:" + ",".join(f"{s:.1f}" for s in skims))
+
+    _append_trace(entity_id, "LAY-1", evidence, explanation)
+    return True, explanation, evidence
 
 
 # ============================================================
@@ -769,6 +885,11 @@ def run_all_rules(entities, all_events_df, enriched_txns, entity_map=None, windo
     events_by_entity = dict(tuple(all_events_df.groupby('entity_id'))) if not all_events_df.empty and 'entity_id' in all_events_df.columns else {}
     enriched_by_entity = dict(tuple(enriched_txns.groupby('entity_id'))) if not enriched_txns.empty and 'entity_id' in enriched_txns.columns else {}
 
+    # LAY-1 walks a chain ACROSS entities (A -> B -> C -> D), so it needs the whole
+    # transfer graph, not one entity's slice. Build that index once here and hand the
+    # same object to every call.
+    outgoing_by_entity = build_outgoing_index(all_events_df)
+
     for entity_id, entity_data in entities.items():
         entity_results = {
             "rules_fired": [],
@@ -823,8 +944,11 @@ def run_all_rules(entities, all_events_df, enriched_txns, entity_map=None, windo
             entity_results["evidence"]["STR-1"] = evidence
             entity_results["rule_severities"]["STR-1"] = "HIGH"
 
-        # LAY-1: Layering
-        fired, explanation, evidence = check_lay1(entity_id, entity_df, entity_map)
+        # LAY-1: Layering — driven by the global transfer index, not entity_df
+        fired, explanation, evidence = check_lay1(
+            entity_id, all_events_df, entity_map,
+            outgoing_by_entity=outgoing_by_entity,
+        )
         if fired:
             entity_results["rules_fired"].append("LAY-1")
             entity_results["explanations"]["LAY-1"] = explanation

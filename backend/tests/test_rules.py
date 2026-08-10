@@ -171,20 +171,89 @@ def test_idr1_constant_identifiers_no_fire():
 # ============================================================
 # 4. LAY-1: LAYERING FLOW TESTS
 # ============================================================
+LAY1_ENTITY_MAP = {"ACC_A": "ENT_LAY_A", "ACC_B": "ENT_LAY_B", "ACC_C": "ENT_LAY_C"}
+
+
+def _lay1_chain(amounts=(-100000.0, -90000.0, -80000.0)):
+    """A -> B -> C -> A: three hops closing a cycle, each losing ~10% to a skim."""
+    t0 = datetime(2025, 5, 1, 10, 0, 0)
+    a, b, c = amounts
+    return pd.DataFrame([
+        {"entity_id": "ENT_LAY_A", "event_type": "transaction", "amount": a, "counterparty": "ACC_B", "timestamp": t0, "raw_row_ref": 1},
+        {"entity_id": "ENT_LAY_B", "event_type": "transaction", "amount": -a, "counterparty": "ACC_A", "timestamp": t0, "raw_row_ref": 2},
+        {"entity_id": "ENT_LAY_B", "event_type": "transaction", "amount": b, "counterparty": "ACC_C", "timestamp": t0 + timedelta(minutes=15), "raw_row_ref": 3},
+        {"entity_id": "ENT_LAY_C", "event_type": "transaction", "amount": -b, "counterparty": "ACC_B", "timestamp": t0 + timedelta(minutes=15), "raw_row_ref": 4},
+        {"entity_id": "ENT_LAY_C", "event_type": "transaction", "amount": c, "counterparty": "ACC_A", "timestamp": t0 + timedelta(minutes=30), "raw_row_ref": 5},
+    ])
+
+
 def test_lay1_layering_flow_positive():
     """LAY-1 fires when rapid pass-through circular transaction flow occurs."""
-    t0 = datetime(2025, 5, 1, 10, 0, 0)
-    txns = [
-        {"entity_id": "ENT_LAY_A", "event_type": "transaction", "amount": -100000.0, "counterparty": "ACC_B", "timestamp": t0, "raw_row_ref": 1},
-        {"entity_id": "ENT_LAY_B", "event_type": "transaction", "amount": 100000.0, "counterparty": "ACC_A", "timestamp": t0, "raw_row_ref": 2},
-        {"entity_id": "ENT_LAY_B", "event_type": "transaction", "amount": -90000.0, "counterparty": "ACC_C", "timestamp": t0 + timedelta(minutes=15), "raw_row_ref": 3},
-        {"entity_id": "ENT_LAY_C", "event_type": "transaction", "amount": 90000.0, "counterparty": "ACC_B", "timestamp": t0 + timedelta(minutes=15), "raw_row_ref": 4},
-        {"entity_id": "ENT_LAY_C", "event_type": "transaction", "amount": -80000.0, "counterparty": "ACC_A", "timestamp": t0 + timedelta(minutes=30), "raw_row_ref": 5},
-    ]
-    df = pd.DataFrame(txns)
-    entity_map = {"ACC_A": "ENT_LAY_A", "ACC_B": "ENT_LAY_B", "ACC_C": "ENT_LAY_C"}
+    fired, exp, ev = check_lay1("ENT_LAY_A", _lay1_chain(), entity_map=LAY1_ENTITY_MAP)
+    assert fired is True
 
-    fired, exp, ev = check_lay1("ENT_LAY_A", df, entity_map=entity_map)
+
+def test_lay1_closes_a_real_cycle():
+    """The chain returns to its origin, so LAY-1 must report a cycle — and only then.
+
+    The explanation asserts 'Circular flow confirmed'; this test is what makes that
+    claim checkable rather than decorative.
+    """
+    fired, exp, ev = check_lay1("ENT_LAY_A", _lay1_chain(), entity_map=LAY1_ENTITY_MAP)
+    assert fired is True
+    assert "cycle:true" in ev
+    assert "Circular flow confirmed" in exp
+    # Origin appears at both ends of the reported path.
+    assert "ENT_LAY_A -> ENT_LAY_B -> ENT_LAY_C -> ENT_LAY_A" in exp
+    # Measured skim is reported, not assumed.
+    assert any(e.startswith("skim_pct:") for e in ev)
+
+
+def test_lay1_open_chain_does_not_claim_a_cycle():
+    """A chain that never returns to the origin must NOT be described as circular."""
+    df = _lay1_chain()
+    # Last hop goes to a dead end instead of back to A.
+    df.loc[df["raw_row_ref"] == 5, "counterparty"] = "ACC_UNKNOWN"
+
+    fired, exp, ev = check_lay1("ENT_LAY_A", df, entity_map=LAY1_ENTITY_MAP)
+    assert fired is True
+    assert "cycle:false" in ev
+    assert "Circular flow confirmed" not in exp
+    assert "no return to ENT_LAY_A" in exp
+
+
+def test_lay1_ignores_chains_below_the_amount_floor():
+    """A shrinking chain of small transfers is ordinary retail behaviour, not layering."""
+    fired, exp, ev = check_lay1(
+        "ENT_LAY_A", _lay1_chain(amounts=(-1417.0, -1275.0, -1147.0)),
+        entity_map=LAY1_ENTITY_MAP,
+    )
+    assert fired is False
+
+
+def test_lay1_ignores_shrinkage_outside_the_skim_band():
+    """A 50% haircut is not a commission skim — the documented typology is 5-15%."""
+    fired, exp, ev = check_lay1(
+        "ENT_LAY_A", _lay1_chain(amounts=(-100000.0, -50000.0, -25000.0)),
+        entity_map=LAY1_ENTITY_MAP,
+    )
+    assert fired is False
+
+
+def test_lay1_needs_the_global_frame_not_one_entity_slice():
+    """Regression guard for S1.1.
+
+    LAY-1 walks A -> B -> C, so it can only ever work on the whole event frame.
+    Handing it a single entity's rows — which is what the rule engine used to do —
+    must not produce a firing.
+    """
+    df = _lay1_chain()
+    entity_a_only = df[df["entity_id"] == "ENT_LAY_A"]
+
+    fired, _, _ = check_lay1("ENT_LAY_A", entity_a_only, entity_map=LAY1_ENTITY_MAP)
+    assert fired is False, "LAY-1 must not appear to work when given one entity's rows"
+
+    fired, _, _ = check_lay1("ENT_LAY_A", df, entity_map=LAY1_ENTITY_MAP)
     assert fired is True
 
 
