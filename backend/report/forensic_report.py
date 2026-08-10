@@ -234,8 +234,8 @@ def generate_forensic_report(entity_id, entity_data, risk_data, all_events_df,
     else:
         doc.add_paragraph('No events found for this entity.')
 
-    # --- SECTION 6: DECISION TRACE ---
-    doc.add_heading('6. Decision Trace References', level=1)
+    # --- SECTION 7: DECISION TRACE ---
+    doc.add_heading('7. Decision Trace References', level=1)
 
     evidence_data = risk_data.get("evidence", {})
     if evidence_data:
