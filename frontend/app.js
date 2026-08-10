@@ -2324,7 +2324,10 @@ function initNetworkWithData(data) {
     nodes: { borderWidth: 2, shadow: false },
     edges: {
       smooth: { type: 'cubicBezier', forceDirection: 'none' },
-      arrows: directed ? { to: { enabled: true, scaleFactor: 0.55 } } : 'none',
+      // vis.js rejects the string 'none' here and logs an options error on every
+      // load of the identity view; disabling the head is the supported way to draw
+      // an undirected edge.
+      arrows: { to: { enabled: directed, scaleFactor: 0.55 } },
       selectionWidth: 2,
     },
     physics: {
