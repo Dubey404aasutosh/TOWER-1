@@ -29,6 +29,36 @@ def _source_file_to_institution(source_file):
     return "Other Institution"
 
 
+def _location_to_city(location):
+    """
+    Resolve an event's location field to a city name.
+
+    The two telecom sources record place differently: CDR carries a cell-tower id
+    ("SRT-T05"), IPDR carries a city name already ("Chennai"). Both have to land on
+    the same label for a city filter to mean anything.
+    """
+    if location is None:
+        return None
+    text = str(location).strip()
+    if not text or text.lower() in ("nan", "none"):
+        return None
+
+    try:
+        from graph.map_builder import CELL_TOWERS
+    except Exception:
+        CELL_TOWERS = {}
+
+    tower = CELL_TOWERS.get(text) or CELL_TOWERS.get(text.upper())
+    if tower and tower.get("city"):
+        return tower["city"]
+
+    known = {t.get("city") for t in CELL_TOWERS.values() if t.get("city")}
+    for city in known:
+        if text.lower() == city.lower():
+            return city
+    return text if len(text) <= 32 else None
+
+
 def _build_identifier_index(entities):
     """
     Build a single reverse lookup: identifier (phone/account/vpa) -> entity_id.
