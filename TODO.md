@@ -272,6 +272,33 @@ Restores advertised functionality. Every item is a defect fix, not a feature.
   - ⚠️ Blocks the pre-submission line **"all 7 rules fire at least once across the dataset"**, and
     leaves the `LAY-1 AND IDR-1` path to CRITICAL still never exercised.
   - 🏆 Earns: honesty on the README's "7 Deterministic Forensic Rules" claim (ties into S3.5).
+  - **✅ Shipped — the guess above was right about the cause and understated it.** The rule was
+    not merely using a different definition; it was hunting for **the exact opposite** of the
+    planted pattern. `generate_all.py:673` plants E044 as *"One IMEI operating 3 phone numbers
+    and 2-3 bank accounts"* — one IMEI that **never changes**. `check_idr1` searched for an IMEI
+    *changing between consecutive events*, so the single entity the rule exists to catch was
+    structurally invisible to it. A second finding: `schema.Event` has **no `imsi` field** and
+    `cdr_parser.py` never reads one, so the `imei_changed AND imsi_changed → HIGH` branch could
+    not be reached by any real data — the same class of defect as LOC-1's `cell_id` fixture.
+  - **Definition, thresholds named and documented** at the top of the rule: one entity is
+    "fanned out" if a single IMEI operates ≥2 MSISDNs (**HIGH** — a handset cycling SIMs), or it
+    holds ≥3 accounts, or ≥2 IMEIs (**MEDIUM**); two limbs corroborating escalate to HIGH. The
+    original SIM-swap logic is kept as a fourth limb rather than deleted — it is a real signal
+    with 8 passing tests, it just is not what "fan-out" means.
+  - **Thresholds were measured before being chosen, not guessed.** Across all 1,368 resolved
+    entities exactly **one** has 3+ accounts, **one** has 3+ phones, **zero** have 2+ IMEIs, and
+    exactly **one** IMEI in the entire dataset operates more than one MSISDN — all of them
+    `ENT_0044`. Every candidate definition selected that entity and nothing else, so the limb
+    thresholds cost **zero false positives**.
+  - **Result: IDR-1 fires 1×, on `ENT_0044`, at HIGH.** `DEAD RULES: []` — all seven fire.
+    `ENT_0044` was already HIGH via STR-1, so the gate at `risk_engine.py:52`
+    (`IDR-1 HIGH AND ≥2 rules`) promotes it to **CRITICAL: 4 → 5**. Recall and precision are
+    **unchanged** — the entity was already counted as detected, so this adds a correct reason
+    rather than a new flag.
+  - Five new tests assert the documented definition limb by limb, plus
+    `test_idr1_fires_at_least_once_on_the_demo_dataset`, which fails if **any** of the seven
+    rules ever goes dead again. `correlation.md:69` and `README.md:100` rewritten to match the
+    rule (part of **S3.5**).
 
 ---
 
