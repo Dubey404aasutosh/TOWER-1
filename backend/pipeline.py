@@ -228,6 +228,10 @@ def run_pipeline(data_dir=None, window_minutes=10, generate_reports=False, progr
                 create_timeline_fn=create_timeline_plotly,
                 create_network_fn=create_network_plotly,
                 network_graph=network_graph,
+                # The timeline chart needs the correlation output to shade the TCS
+                # windows, and the window it was actually computed with.
+                enriched_txns=enriched_txns,
+                window_minutes=window_minutes,
             )
             print(f"  Reports generated: {len(reports)}")
         except Exception as e:

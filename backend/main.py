@@ -900,12 +900,20 @@ def download_report(entity_id: str):
     entity_data = entities.get(entity_id, {})
     risk_data = scored_entities.get(entity_id, {"risk_tier": "LOW", "rules_fired": []})
 
-    from report.forensic_report import generate_forensic_report
-    from graph.network_builder import create_network_plotly, create_timeline_plotly
+    from report.forensic_report import build_report_figures, generate_forensic_report
+    from report.report_charts import extract_layering_hops
+
+    timeline_png, network_png = build_report_figures(
+        entity_id, risk_data, all_events_df, scored_entities,
+        network_graph=network_graph,
+        enriched_txns=results.get("enriched_txns"),
+        window_minutes=results.get("window_minutes", 10),
+        layering_hops=extract_layering_hops(scored_entities),
+    )
 
     report_path = generate_forensic_report(
         entity_id, entity_data, risk_data, all_events_df,
-        timeline_fig=None, network_fig=None
+        timeline_png=timeline_png, network_png=network_png,
     )
 
 
