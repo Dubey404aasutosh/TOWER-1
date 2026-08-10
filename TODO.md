@@ -366,7 +366,7 @@ These are requirement lines currently scoring near zero. Backend and frontend tr
 > **(c)** `populateInspector()` already renders real entity data on node click, so S2.3 is
 > now only the *evidence rows*, not the whole panel.
 
-- [ ] **S2.1 — Unified timeline view** ⏱ 4h 🔴 **PS centrepiece**
+- [x] **S2.1 — Unified timeline view** ⏱ 4h 🔴 **PS centrepiece**
   - FR-II.a. Confirmed still true after Day 1: `build_unified_timeline()` is defined at
     `backend/correlation/temporal_join.py:113` and has **0 call sites**;
     `create_timeline_plotly()` is defined at `backend/graph/network_builder.py:444`, imported at
