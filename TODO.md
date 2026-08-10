@@ -601,16 +601,22 @@ These are requirement lines currently scoring near zero. Backend and frontend tr
 # ✅ Pre-submission checklist
 
 - [ ] `python backend/main.py` starts clean from a fresh clone
-- [ ] Pipeline completes in **< 10s** on the demo dataset
-- [ ] `CRITICAL > 0` and **all 7 rules** fire at least once across the dataset
-- [ ] Recall **≥75%** and precision **≥70%** under a *single* consistent threshold
+- [x] Pipeline completes in **< 10s** on the demo dataset — **8.16s @ 2,404 events**
+- [x] `CRITICAL > 0` and **all 7 rules** fire at least once across the dataset — **CRITICAL = 5,
+      zero dead rules**, guarded by `test_idr1_fires_at_least_once_on_the_demo_dataset`
+- [ ] Recall **≥75%** and precision **≥70%** under a *single* consistent threshold —
+      recall **100%** ✅, precision **62.5%** ❌ pending **S3.1** (labelling artifact, not detection)
 - [ ] No number on any screen is hardcoded — swap in a different dataset and verify everything moves
-- [ ] **No fabricated hash, size, or row count anywhere in the UI**
-- [ ] Money-flow graph renders with real edges; clicking a node shows real evidence rows
-- [ ] Timeline view renders for at least one flagged entity
-- [ ] Sample `.docx` (forensic + STR) committed **with charts embedded**
-- [ ] `README.md` describes only what actually works
-- [ ] `pytest backend/tests/` passes with the tautologies removed
+      *(re-verify on Day 3: the Reports panel and the timeline entity list became data-driven on Day 2)*
+- [x] **No fabricated hash, size, or row count anywhere in the UI** — plus the invented case
+      numbers, dates and "SEALED" statuses in `MOCK_REPORTS` are gone
+- [x] Money-flow graph renders with real edges; clicking a node shows real evidence rows
+- [x] Timeline view renders for at least one flagged entity — renders for all 8, demo on `ENT_0043`
+- [x] Sample `.docx` (forensic + STR) committed **with charts embedded** —
+      `backend/reports/sample_*.docx`, whitelisted by prefix and no longer deleted by a pipeline run
+- [ ] `README.md` describes only what actually works — IDR-1's entry corrected on Day 2;
+      the Leaflet / hash-logging / Word-vs-PDF claims are still **S3.5**
+- [x] `pytest backend/tests/` passes with the tautologies removed — **54 passed**
 - [ ] Demo rehearsed twice, end to end, timed
 
 ---
