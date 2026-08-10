@@ -179,12 +179,17 @@ def run_risk_engine(rule_results, all_events_df, entities):
     # Step 1: Deterministic risk tiers
     scored = {}
     for entity_id, rule_data in rule_results.items():
-        tier = compute_risk_tier(rule_data["rules_fired"], rule_data.get("rule_severities"))
+        rule_severities = rule_data.get("rule_severities") or {}
+        tier = compute_risk_tier(rule_data["rules_fired"], rule_severities)
         scored[entity_id] = {
             "risk_tier": tier,
             "rules_fired": rule_data["rules_fired"],
             "explanations": rule_data["explanations"],
             "evidence": rule_data["evidence"],
+            # Carried through to the API. IDR-1 grades itself HIGH/MEDIUM/LOW and
+            # that grade decides the tier, so dropping it here left the UI unable to
+            # explain why two entities with the same rule list scored differently.
+            "rule_severities": rule_severities,
             "ml_anomaly": False,
         }
 
@@ -201,6 +206,7 @@ def run_risk_engine(rule_results, all_events_df, entities):
                 "rules_fired": [],
                 "explanations": {},
                 "evidence": {},
+                "rule_severities": {},
                 "ml_anomaly": is_anomaly,
             }
 

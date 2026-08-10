@@ -130,6 +130,17 @@ def serialize_money_flow_graph(network_graph, scored_entities, entities, max_nod
 
     tier_rank = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
 
+    # Exact hops of every detected layering chain, read from the LAY-1 evidence
+    # token the rule emits ("chain:ENT_A>ENT_B>ENT_C"). Highlighting these — rather
+    # than every edge between two LAY-1 entities — lights the path that was actually
+    # walked, including hops through a chain member that did not itself fire.
+    layering_hops = set()
+    for eid, sdata in scored_entities.items():
+        for token in (sdata.get("evidence", {}) or {}).get("LAY-1", []) or []:
+            if isinstance(token, str) and token.startswith("chain:"):
+                path = [p for p in token[len("chain:"):].split(">") if p]
+                layering_hops.update(zip(path, path[1:]))
+
     # Which nodes are worth drawing
     connected = {n for n in network_graph.nodes() if network_graph.degree(n) > 0}
     flagged = {n for n in network_graph.nodes() if tier_of(n) in ("CRITICAL", "HIGH", "MEDIUM")}
@@ -204,7 +215,7 @@ def serialize_money_flow_graph(network_graph, scored_entities, entities, max_nod
         count = int(data.get("count", 1) or 1)
 
         u_rules, v_rules = rules_of(u), rules_of(v)
-        is_layering = "LAY-1" in u_rules and "LAY-1" in v_rules
+        is_layering = (u, v) in layering_hops
         is_smoking_gun = any(r in u_rules + v_rules for r in ("TCS-1", "TCS-2"))
 
         if edge_type == "transaction":
@@ -579,6 +590,9 @@ def get_results():
             "rules_fired": score_data.get("rules_fired", []),
             "explanations": score_data.get("explanations", {}),
             "evidence": score_data.get("evidence", {}),
+            # Per-rule severity (IDR-1 grades itself HIGH/MEDIUM/LOW) — this is what
+            # distinguishes a fraudulent SIM+device swap from a routine handset upgrade.
+            "rule_severities": score_data.get("rule_severities", {}),
             "ml_anomaly": score_data.get("ml_anomaly", False),
             "phones": list(ent_details.get("phones", [])),
             "accounts": list(ent_details.get("accounts", [])),
