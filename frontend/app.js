@@ -2601,15 +2601,29 @@ function applyNetworkFilters() {
   const nodeUpdates = [];
   const edgeUpdates = [];
   let shownEdges = 0;
+  const endpointsOfVisibleEdges = new Set();
   rawNetworkEdges.forEach(e => {
     const key = e.id != null ? e.id : `${e.from}__${e.to}`;
     const ok = edgeVisible.get(key) && nodeVisible.get(e.from) && nodeVisible.get(e.to);
     edgeVisible.set(key, !!ok);
-    if (ok) shownEdges++;
+    if (ok) { shownEdges++; endpointsOfVisibleEdges.add(e.from); endpointsOfVisibleEdges.add(e.to); }
     // An edge without an id cannot be addressed in the DataSet; skip rather than
     // push an update keyed on undefined, which would throw.
     if (e.id != null) edgeUpdates.push({ id: e.id, hidden: !ok });
   });
+
+  // An edge-level filter answers a question about connections ("transfers over
+  // ₹1L", "the layering chain"), so leaving every unconnected node on screen
+  // buries the answer in 150 stranded dots. Drop nodes with nothing left to show.
+  const edgeFilterActive = f.amountMin > 0 || fromTs || toTs
+    || f.quick === 'money' || f.quick === 'layering';
+  if (edgeFilterActive) {
+    rawNetworkNodes.forEach(n => {
+      if (nodeVisible.get(n.id) && !endpointsOfVisibleEdges.has(n.id)) {
+        nodeVisible.set(n.id, false);
+      }
+    });
+  }
 
   let shownNodes = 0;
   rawNetworkNodes.forEach(n => {
