@@ -469,6 +469,49 @@
       </div>
 
       <!-- ══ ENTITY NETWORK VIEW ═══════════════════════════ -->
+      <!-- ══ UNIFIED TIMELINE VIEW (FR-II.a) ═══════════════ -->
+      <div class="view" id="view-timeline">
+        <div class="page-header">
+          <div>
+            <div class="breadcrumb"><span>Visualization</span><i class="fa-solid fa-chevron-right"></i><span>Unified Timeline</span></div>
+            <h1 class="page-title">Unified Evidentiary Timeline</h1>
+            <p class="page-sub">Every event for one entity across bank, CDR and IPDR on a single time axis.
+              Shaded bands are the temporal correlation windows in which a transfer, a call and an
+              IP session coincide — the intersection no single dataset contains.</p>
+          </div>
+          <div class="page-actions">
+            <label class="nf-field"><span>Entity</span>
+              <select id="timeline-entity-select"></select>
+            </label>
+            <a class="btn btn-ghost btn-sm" id="timeline-report-link" href="#">
+              <i class="fa-solid fa-file-word"></i> Report
+            </a>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="tl-head">
+            <div id="timeline-summary" class="tl-summary"></div>
+            <div class="filter-group" id="timeline-zoom-presets"></div>
+          </div>
+          <div class="tl-lanes-wrap">
+            <svg id="timeline-detail" class="tl-svg" role="img" aria-label="Entity event timeline"></svg>
+          </div>
+          <div class="tl-context-wrap">
+            <div class="tl-context-label">Full range — drag to move the window, or use the presets above</div>
+            <svg id="timeline-context" class="tl-context-svg"></svg>
+          </div>
+          <div class="tl-legend" id="timeline-legend"></div>
+        </div>
+
+        <div class="card" style="margin-top:14px;">
+          <div class="card-header"><div class="card-title"><i class="fa-solid fa-file-lines"></i> Selected event — source row</div></div>
+          <div id="timeline-detail-panel" class="tl-detail-panel">
+            <p class="inspector-hint"><i class="fa-solid fa-hand-pointer"></i> Click any marker on the timeline to see the row it came from.</p>
+          </div>
+        </div>
+      </div>
+
       <div class="view" id="view-network">
         <div class="page-header">
           <div>
