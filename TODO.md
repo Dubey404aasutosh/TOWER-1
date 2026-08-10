@@ -567,7 +567,10 @@ These are requirement lines currently scoring near zero. Backend and frontend tr
 - [ ] Add amount/volume features to the IsolationForest vector (`risk_engine.py:101-141` has **no amount feature at all**); switch `contamination=0.1` → `'auto'` (0.1 mechanically guarantees exactly 10% flagged regardless of the data).
 - [ ] Fix `/api/reports` entity_id: `main.py:519` `.split("_")[0]` returns `"ENT"` for every report.
 - [ ] Delete dead weight: `frontend/components/*.jsx` (Next.js files with no build system), `map_builder` plot functions (~290 lines, 0 references), the orphaned dashboard block at `index.html:785` (**12 duplicate IDs**), root `decision_trace.jsonl` (stale), `server_log.txt`.
-- [ ] Fix float row refs in evidence: `decision_trace.jsonl` contains `"cdr_row_1018.0"` — `merge_asof` promotes the column to float64. Cast to nullable `Int64`. Small, but it's a court-exhibit artifact.
+- [x] ~~Fix float row refs in evidence: `decision_trace.jsonl` contains `"cdr_row_1018.0"`~~ —
+  **done on Day 2**, pulled forward because S2.3 now renders these references to a judge as
+  court-exhibit citations. Normalised at the source in `check_tcs1` (`_row_ref_text`), so the
+  trace file itself is clean, and again on the way out of `/api/entity/{id}/trace`.
 
 ---
 
