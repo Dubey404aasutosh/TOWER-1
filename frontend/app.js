@@ -537,16 +537,11 @@ const MOCK_CASES = [
   { id: 'CASE-2026-00251', title: 'Dark Web Asset Recovery', status: 'archived', risk: 0, officer: 'SI Patel', lastActivity: '2w ago', entities: 6, rules: [] },
 ];
 
-const MOCK_POIS = [
-  { id: 'ENT-0037', name: 'Rajesh A. Mehta', alias: 'rajesh@upi', risk: 94, tier: 'CRITICAL', phones: ['+91-9876543210', '+91-9823412345'], accounts: ['SBI-xxxx4421', 'HDFC-xxxx9918'], rules: ['MUL-1', 'TCS-1', 'IDR-1'], cases: ['CASE-2026-00412'] },
-  { id: 'ENT-0041', name: 'Yashica Issac', alias: 'yashica.i', risk: 81, tier: 'HIGH', phones: ['+91-9754702370'], accounts: ['HDFC-xxxx0037'], rules: ['STR-1'], cases: ['CASE-2026-00321'] },
-  { id: 'ENT-0042', name: 'Kashvi Edwin', alias: 'kashvi.e', risk: 68, tier: 'HIGH', phones: ['+91-9823456781'], accounts: ['ICICI-xxxx7712'], rules: ['TCS-1', 'TCS-2'], cases: ['CASE-2026-00371'] },
-  { id: 'ENT-0044', name: 'Isaac Patil', alias: 'isaac.p', risk: 62, tier: 'HIGH', phones: ['+91-9769376075'], accounts: ['SBI-xxxx3311'], rules: ['STR-1'], cases: ['CASE-2026-00344'] },
-  { id: 'ENT-0045', name: 'Wriddhish Bhardwaj', alias: 'wriddhish.b', risk: 58, tier: 'HIGH', phones: ['+91-9769743530'], accounts: ['HDFC-xxxx5521'], rules: ['LOC-1'], cases: ['CASE-2026-00298'] },
-  { id: 'ENT-0272', name: 'Priya Sethuraman', alias: 'priya.s', risk: 42, tier: 'MEDIUM', phones: ['+91-9823412340'], accounts: ['SBI-xxxx7890'], rules: ['MUL-1'], cases: ['CASE-2026-00344'] },
-  { id: 'ENT-0014', name: 'Ankit Verma', alias: 'ankit.v', risk: 35, tier: 'MEDIUM', phones: ['+91-9876001234'], accounts: ['ICICI-xxxx2290'], rules: ['TCS-2'], cases: ['CASE-2026-00371'] },
-  { id: 'ENT-0021', name: 'Harini Choudhury', alias: 'harini.c', risk: 21, tier: 'MEDIUM', phones: ['+91-9822263902'], accounts: ['HDFC-xxxx1144'], rules: ['TCS-2'], cases: ['CASE-2026-00389'] },
-];
+/* Persons of Interest are filled from /api/results (rule-flagged entities only).
+   The former hardcoded roster invented names, account numbers and risk
+   percentages for entities the engine had never scored. */
+const MOCK_POIS = [];
+let POI_SUPPRESSED_LOW = 0;
 
 /* Evidence files are NEVER mocked. This array is filled only from
    GET /api/evidence-files, where every size, row count and SHA-256 digest is
@@ -870,8 +865,13 @@ function initFilterBtns() {
 function populatePOI() {
   const grid = document.getElementById('poi-grid');
   if (!grid) return;
+  if (!MOCK_POIS.length) {
+    grid.innerHTML = `<div style="padding:26px;color:var(--text-muted);font-size:13px;">
+      No rule-flagged entities loaded yet — the list is built from the current pipeline run.</div>`;
+    return;
+  }
   grid.innerHTML = MOCK_POIS.map(p => {
-    const riskClass = p.risk >= 80 ? 'high' : p.risk >= 40 ? 'medium' : 'low';
+    const riskClass = ['CRITICAL', 'HIGH'].includes(p.tier) ? 'high' : p.tier === 'MEDIUM' ? 'medium' : 'low';
     const identChips = p.phones.slice(0, 1).map(x => `<span class="ident-chip"><i class="fa-solid fa-phone" style="font-size:9px;color:var(--accent-primary);"></i> ${x}</span>`).join('') +
       p.accounts.slice(0, 1).map(x => `<span class="ident-chip"><i class="fa-solid fa-building-columns" style="font-size:9px;color:#a78bfa;"></i> ${x}</span>`).join('');
     const ruleChips = p.rules.map(r => `<span class="rule-chip">${r}</span>`).join('');
@@ -889,8 +889,9 @@ function populatePOI() {
         </div>
         <div class="poi-risk-row">
           <div>
-            <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:2px;">Risk Score</div>
-            <div class="poi-risk-score ${riskClass}">${p.risk}%</div>
+            <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:2px;">Risk Tier</div>
+            <div class="poi-risk-score ${riskClass}" style="font-size:17px;" title="Rule-gated tier — the engine assigns tiers, not numeric scores">${p.risk != null ? p.risk + '%' : p.tier}</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${p.rules.length} rule${p.rules.length === 1 ? '' : 's'} fired${p.mlAnomaly ? ' · ML flag' : ''}</div>
           </div>
           <div style="text-align:right;">
             <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:2px;">Entity ID</div>
@@ -910,6 +911,14 @@ function populatePOI() {
       </div>
     `;
   }).join('');
+
+  if (POI_SUPPRESSED_LOW > 0) {
+    grid.insertAdjacentHTML('beforeend', `
+      <div style="grid-column:1/-1;padding:12px 4px;color:var(--text-muted);font-size:12px;">
+        Showing ${MOCK_POIS.length} rule-flagged entit${MOCK_POIS.length === 1 ? 'y' : 'ies'} ·
+        ${POI_SUPPRESSED_LOW.toLocaleString()} LOW-tier entities (no rule fired) are not listed.
+      </div>`);
+  }
 }
 
 /* ── STR / FORENSIC REPORT EXPORTS ─────────────────────────────── */
@@ -1414,14 +1423,20 @@ async function fetchRealResults() {
     populateDashboard();
 
     if (data.suspects && data.suspects.length > 0) {
+      // The engine assigns a rule-gated TIER, never a numeric score — so no
+      // percentage is synthesised here. Only rule-flagged entities are listed;
+      // the LOW-tier remainder is reported as a count, not as 1,500 cards.
       MOCK_POIS.length = 0;
-      data.suspects.forEach(s => {
+      const flagged = data.suspects.filter(s => s.risk_tier !== 'LOW');
+      POI_SUPPRESSED_LOW = data.suspects.length - flagged.length;
+      flagged.forEach(s => {
         MOCK_POIS.push({
           id: s.entity_id,
           name: s.name && s.name !== 'Unknown' ? s.name : `Suspect (${s.entity_id})`,
           alias: s.phones.length ? s.phones[0] : (s.accounts.length ? s.accounts[0] : s.entity_id),
-          risk: s.risk_tier === 'CRITICAL' ? 95 : s.risk_tier === 'HIGH' ? 82 : s.risk_tier === 'MEDIUM' ? 55 : 20,
+          risk: null,
           tier: s.risk_tier,
+          mlAnomaly: !!s.ml_anomaly,
           phones: s.phones || [],
           accounts: s.accounts || [],
           rules: s.rules_fired || [],
@@ -1751,8 +1766,8 @@ function populateInspector(node) {
         <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent-primary);margin-top:2px;">${poi.id}</div>
       </div>
       ${statusBadge(poi.tier.toLowerCase() === 'critical' ? 'critical' : poi.tier.toLowerCase() === 'high' ? 'escalated' : 'review')}
-      <div style="margin-top:10px;font-size:11.5px;color:var(--text-muted);">Risk Score</div>
-      <div style="font-size:20px;font-weight:800;font-family:var(--font-mono);color:${poi.risk >= 80 ? 'var(--accent-danger)' : poi.risk >= 40 ? 'var(--accent-warning)' : 'var(--accent-success)'};">${poi.risk}%</div>
+      <div style="margin-top:10px;font-size:11.5px;color:var(--text-muted);">Risk Tier</div>
+      <div style="font-size:18px;font-weight:800;font-family:var(--font-mono);color:${['CRITICAL', 'HIGH'].includes(poi.tier) ? 'var(--accent-danger)' : poi.tier === 'MEDIUM' ? 'var(--accent-warning)' : 'var(--accent-success)'};">${poi.tier}</div>
       <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:4px;">${poi.rules.map(r => `<span class="rule-chip">${r}</span>`).join('')}</div>
       <button class="btn btn-ghost btn-sm" style="margin-top:12px;width:100%;justify-content:center;" onclick="openSlideOver('${poi.cases[0]}')">
         <i class="fa-solid fa-folder-open"></i> Open Case
