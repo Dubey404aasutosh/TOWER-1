@@ -506,6 +506,10 @@
               <!-- Written from the graph the backend actually returned. -->
               <span id="network-meta" style="font-size:11.5px;color:var(--txt-muted);font-family:var(--font-mono);"></span>
             </div>
+            <!-- Amount / time / city / rule controls, built from the facets the
+                 backend reports for the active graph so no control ever offers a
+                 value the data cannot produce. -->
+            <div class="network-filters" id="network-filter-bar"></div>
             <div class="node-legend" id="network-legend"></div>
             <div class="network-canvas" id="identity-network"></div>
           </div>
