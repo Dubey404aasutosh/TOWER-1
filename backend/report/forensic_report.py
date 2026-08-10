@@ -161,23 +161,44 @@ def generate_forensic_report(entity_id, entity_data, risk_data, all_events_df,
     else:
         doc.add_paragraph('No rules fired for this entity.')
 
-    # --- SECTION 4: NETWORK GRAPH ---
-    doc.add_heading('4. Money Flow / Identity Linkage Graph', level=1)
+    # --- SECTION 4: UNIFIED EVIDENTIARY TIMELINE ---
+    doc.add_heading('4. Unified Evidentiary Timeline', level=1)
 
-    if network_fig:
-        try:
-            # Set quick timeout hint if available
-            img_bytes = network_fig.to_image(format="png", width=750, height=450, scale=1)
-            img_stream = io.BytesIO(img_bytes)
-            doc.add_picture(img_stream, width=Inches(6.5))
-        except Exception as e:
-            doc.add_paragraph('[Identity graph visual available in interactive portal. See Evidence Summary table below for complete audit trail.]')
+    timeline_bytes = _resolve_png(timeline_png or timeline_fig, width=1100, height=460)
+    if timeline_bytes:
+        doc.add_paragraph(
+            'Every event recorded for this entity across all ingested sources, plotted on a '
+            'single time axis. Transactions, telephony and internet sessions are separated '
+            'into lanes; shaded bands mark the temporal correlation windows in which a '
+            'transfer, a call and an IP session coincide. Markers ringed in black are the '
+            'specific rows cited as evidence in Section 6.'
+        )
+        doc.add_picture(io.BytesIO(timeline_bytes), width=Inches(6.5))
     else:
-        doc.add_paragraph('[Identity graph visual available in interactive portal. See Evidence Summary table below for complete audit trail.]')
+        doc.add_paragraph(
+            'No timeline could be plotted: no timestamped events are associated with this entity.'
+        )
 
+    # --- SECTION 5: MONEY-FLOW GRAPH ---
+    doc.add_heading('5. Money Flow Neighbourhood', level=1)
 
-    # --- SECTION 5: EVIDENCE TABLE ---
-    doc.add_heading('5. Evidence Summary', level=1)
+    network_bytes = _resolve_png(network_png or network_fig, width=750, height=450)
+    if network_bytes:
+        doc.add_paragraph(
+            'Direct counterparties of this entity. Solid arrows are value transfers labelled '
+            'with the aggregate amount; dashed arrows are telephony contact carrying no money. '
+            'Amounts are counted once per transfer from the sending statement, so each figure '
+            'reconciles with the underlying bank record.'
+        )
+        doc.add_picture(io.BytesIO(network_bytes), width=Inches(6.5))
+    else:
+        doc.add_paragraph(
+            'No money-flow graph could be plotted: this entity has no resolved counterparties '
+            'in the ingested data. See the Evidence Summary below for the complete audit trail.'
+        )
+
+    # --- SECTION 6: EVIDENCE TABLE ---
+    doc.add_heading('6. Evidence Summary', level=1)
 
     entity_events = all_events_df[all_events_df['entity_id'] == entity_id].copy() if not all_events_df.empty else pd.DataFrame()
 
