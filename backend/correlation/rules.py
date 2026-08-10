@@ -197,14 +197,14 @@ def _detect_identifier_swap(entity_df, window_minutes):
                 if imsi_changed:
                     evidence.extend([f"old_imsi:{last_imsi}", f"new_imsi:{curr_imsi}"])
 
-                explanation = (
-                    f"Identity Fan-out (IDR-1) [{severity} signal] for entity {entity_id} on phone {phone}: {change_type}. "
-                    f"IMEI change: {last_imei or 'N/A'} -> {curr_imei or 'N/A'} | IMSI change: {last_imsi or 'N/A'} -> {curr_imsi or 'N/A'}. "
-                    f"Time gap: {time_gap_str}. Financial transaction near change: {'Yes' if has_nearby_txn else 'No'}."
+                description = (
+                    f"{change_type} on number {phone}. "
+                    f"IMEI change: {last_imei or 'N/A'} -> {curr_imei or 'N/A'} | "
+                    f"IMSI change: {last_imsi or 'N/A'} -> {curr_imsi or 'N/A'}. "
+                    f"Time gap: {time_gap_str}. "
+                    f"Financial transaction near change: {'Yes' if has_nearby_txn else 'No'}."
                 )
-
-                _append_trace(entity_id, "IDR-1", evidence, explanation)
-                return True, explanation, evidence, severity
+                return severity, description, evidence
 
             if curr_imei:
                 last_imei = curr_imei
@@ -214,7 +214,114 @@ def _detect_identifier_swap(entity_df, window_minutes):
                 last_ts = curr_ts
             last_row = curr_row
 
-    return False, "", [], "LOW"
+    return None
+
+
+def check_idr1(entity_id, entity_data, all_events_df=None, window_minutes=60):
+    """
+    IDR-1: Identity Fan-out.
+
+    Fires when one resolved entity's identifiers fan out past a single ordinary
+    subscriber's footprint. Four ways that shows up, checked in order of forensic
+    weight:
+
+      HIGH   — one IMEI operating 2+ MSISDNs (a single handset cycling SIMs), or a
+               simultaneous device + SIM swap on one number.
+      MEDIUM — 3+ distinct accounts, or 2+ distinct IMEIs, on one entity; or a
+               single-identifier swap that lands near a financial transaction.
+      LOW    — a lone identifier change with no financial activity around it,
+               i.e. a routine handset upgrade or store SIM replacement.
+
+    Returns (fired, explanation, evidence, severity).
+    """
+    entity_data = entity_data or {}
+
+    entity_df = pd.DataFrame()
+    if all_events_df is not None and not all_events_df.empty:
+        entity_df = _get_entity_df(entity_id, all_events_df)
+        if entity_df.empty and entity_data.get('phones') and 'entity_ref' in all_events_df.columns:
+            phones = [str(p) for p in entity_data['phones']]
+            entity_df = all_events_df[all_events_df['entity_ref'].astype(str).isin(phones)]
+
+    accounts = _clean_id_set(entity_data.get('accounts'))
+    imeis = _clean_id_set(entity_data.get('imeis'))
+
+    # Each finding is (severity, description, evidence tokens).
+    findings = []
+
+    # ---- LIMB 1: device fan-out — one handset, several numbers ----
+    shared_devices = _detect_device_fanout(entity_df)
+    for imei, msisdns in shared_devices.items():
+        numbers = sorted(msisdns)
+        rows = []
+        if 'raw_row_ref' in entity_df.columns:
+            for msisdn in numbers:
+                match = entity_df[
+                    (entity_df['imei'].astype(str).str.strip() == imei) &
+                    (entity_df['entity_ref'].astype(str).str.strip() == msisdn)
+                ]
+                if not match.empty:
+                    rows.append(f"row_{match.iloc[0].get('raw_row_ref')}")
+        findings.append((
+            "HIGH",
+            f"Device fan-out: a single handset (IMEI {imei}) was used to operate "
+            f"{len(numbers)} different mobile numbers — {', '.join(numbers)}.",
+            rows + [f"imei:{imei}", f"msisdn_count:{len(numbers)}",
+                    f"msisdns:{'|'.join(numbers)}", "limb:device_fanout"],
+        ))
+
+    # ---- LIMB 2: account fan-out — the documented "3+ distinct accounts" ----
+    if len(accounts) >= IDR1_MIN_ACCOUNTS:
+        findings.append((
+            "MEDIUM",
+            f"Account fan-out: {len(accounts)} distinct bank accounts resolve to this "
+            f"single identity (threshold {IDR1_MIN_ACCOUNTS}) — {', '.join(sorted(accounts))}.",
+            [f"account_count:{len(accounts)}",
+             f"accounts:{'|'.join(sorted(accounts))}", "limb:account_fanout"],
+        ))
+
+    # ---- LIMB 3: multiple devices — the documented "2+ IMEIs" ----
+    if len(imeis) >= IDR1_MIN_IMEIS:
+        findings.append((
+            "MEDIUM",
+            f"Device multiplicity: {len(imeis)} distinct IMEIs resolve to this single "
+            f"identity (threshold {IDR1_MIN_IMEIS}) — {', '.join(sorted(imeis))}.",
+            [f"imei_count:{len(imeis)}", f"imeis:{'|'.join(sorted(imeis))}",
+             "limb:device_multiplicity"],
+        ))
+
+    # ---- LIMB 4: temporal swap — the device or SIM behind a number changed ----
+    if not entity_df.empty:
+        swap = _detect_identifier_swap(entity_df, window_minutes)
+        if swap:
+            severity, description, evidence = swap
+            findings.append((severity, description, evidence + ["limb:identifier_swap"]))
+
+    if not findings:
+        return False, "", [], "LOW"
+
+    # Corroboration across limbs is itself a signal: an entity that is BOTH fanned
+    # out across accounts AND running several numbers off one handset is a stronger
+    # case than either alone, so two or more limbs escalate to HIGH.
+    findings.sort(key=lambda f: _SEVERITY_RANK.get(f[0], 0), reverse=True)
+    severity = findings[0][0]
+    if len(findings) > 1 and severity == "MEDIUM":
+        severity = "HIGH"
+
+    evidence = [f"severity:{severity}", f"limbs:{len(findings)}"]
+    for _, _, tokens in findings:
+        evidence.extend(tokens)
+
+    explanation = (
+        f"Identity Fan-out (IDR-1) [{severity} signal] for entity {entity_id}: "
+        + " ".join(description for _, description, _ in findings)
+    )
+    if len(findings) > 1:
+        explanation += (f" {len(findings)} independent fan-out indicators corroborate "
+                        f"each other, which is why this is graded {severity}.")
+
+    _append_trace(entity_id, "IDR-1", evidence, explanation)
+    return True, explanation, evidence, severity
 
 
 # ============================================================
