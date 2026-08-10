@@ -908,6 +908,53 @@ def get_entity_trace(entity_id: str):
     }))
 
 
+@app.get("/api/entity/{entity_id}/timeline")
+def get_entity_timeline(entity_id: str):
+    """
+    Unified evidentiary timeline for one entity (FR-II.a).
+
+    Every event the entity appears in, across all three sources, on one time axis
+    in three lanes — transactions, telephony, IP sessions — plus the temporal
+    correlation windows that made TCS-1/TCS-2 fire.
+
+    This reads the same `build_timeline_payload` the forensic report renders its
+    chart from, so the screen and the .docx exhibit cannot disagree.
+    """
+    if not STATE["pipeline_run"] or STATE["last_results"] is None:
+        raise HTTPException(status_code=400, detail="Pipeline has not been executed yet. Run the pipeline first.")
+
+    results = STATE["last_results"]
+    entities = results.get("entities", {})
+    entity_map = results.get("entity_map", {})
+    scored_entities = results.get("scored_entities", {})
+
+    target_eid = entity_id
+    if target_eid not in entities and target_eid in entity_map:
+        target_eid = entity_map[target_eid]
+    if target_eid not in entities:
+        raise HTTPException(status_code=404, detail=f"Entity {entity_id} not found in pipeline results.")
+
+    score_info = scored_entities.get(target_eid, {})
+
+    from correlation.temporal_join import build_timeline_payload
+
+    payload = build_timeline_payload(
+        results.get("all_events_df"),
+        target_eid,
+        enriched_txns=results.get("enriched_txns"),
+        window_minutes=results.get("window_minutes", 10),
+        rule_evidence=score_info.get("evidence", {}),
+    )
+    payload.update({
+        "name": entities.get(target_eid, {}).get("name", ""),
+        "risk_tier": score_info.get("risk_tier", "LOW"),
+        "rules_fired": score_info.get("rules_fired", []),
+        "rule_severities": score_info.get("rule_severities", {}),
+        "explanations": score_info.get("explanations", {}),
+    })
+    return JSONResponse(content=clean_serializable(payload))
+
+
 @app.get("/api/download-trace")
 def download_trace():
     trace_path = BACKEND_DIR / "decision_trace.jsonl"
