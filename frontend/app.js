@@ -2021,7 +2021,7 @@ function renderInspectorEvidence(trace) {
       <div class="ev-rule-block">
         <div class="ev-rule-head">
           <span class="rule-chip">${escapeHTML(ruleId)}</span>
-          ${metaTokens.map(t => `<span class="ev-meta" title="${escapeAttr(t.raw)}">${escapeHTML(t.key)}: ${escapeHTML(t.value)}</span>`).join('')}
+          ${metaTokens.map(t => `<span class="ev-tok" title="${escapeAttr(t.raw)}">${escapeHTML(t.key)}: ${escapeHTML(t.value)}</span>`).join('')}
         </div>
         ${explanation ? `<div class="ev-rule-expl">${escapeHTML(explanation)}</div>` : ''}
         <div class="ev-rows">${rowsHtml}</div>
