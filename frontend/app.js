@@ -1873,9 +1873,18 @@ function timelineZoom(mode) {
   } else if (mode === 'correlation') {
     const bands = s.payload.correlations || [];
     if (!bands.length) return;
-    // Step through the correlation windows one click at a time.
-    s.correlationIndex = (s.correlationIndex + 1) % bands.length;
-    const c = bands[s.correlationIndex];
+    // Visit the most probative window first, then cycle. Chronological order would
+    // open on whichever correlation happens to be earliest — for the mule entity
+    // that is a ₹113 transfer, not the ₹5,00,000 inflow the case turns on. This is
+    // the same ranking the forensic report uses to pick its zoom panel, so the
+    // screen and the .docx exhibit open on the same moment.
+    const ranked = bands.map((c, i) => i).sort((a, bIdx) => {
+      const A = bands[a], B = bands[bIdx];
+      const tcs = (B.kind === 'tcs1') - (A.kind === 'tcs1');
+      return tcs !== 0 ? tcs : (B.amount || 0) - (A.amount || 0);
+    });
+    s.correlationIndex = (s.correlationIndex + 1) % ranked.length;
+    const c = bands[ranked[s.correlationIndex]];
     const centre = Date.parse(c.centre);
     const half = (s.payload.window_minutes || 10) * 60000 * 3;
     s.t0 = centre - half; s.t1 = centre + half;
