@@ -1684,6 +1684,15 @@ const timelineState = {
   loading: false,
 };
 
+/* Jump straight from a node in the money-flow graph to that entity's timeline —
+   the demo path is "the chain lights up" then "open its timeline", and making the
+   judge re-find the entity in a dropdown between those two steps breaks it. */
+function openEntityTimeline(entityId) {
+  timelineState.entityId = entityId;
+  timelineState.payload = null;
+  switchView('timeline');
+}
+
 function initTimeline() {
   const select = document.getElementById('timeline-entity-select');
   if (!select) return;
@@ -2729,7 +2738,11 @@ function renderInspectorEvidence(trace) {
       Evidence — source rows behind each firing
     </div>
     ${blocks}
-    <a class="btn btn-ghost btn-sm" style="margin-top:8px;width:100%;justify-content:center;"
+    <button class="btn btn-ghost btn-sm" style="margin-top:8px;width:100%;justify-content:center;"
+            onclick="openEntityTimeline('${escapeAttr(trace.entity_id)}')">
+      <i class="fa-solid fa-timeline"></i> Open timeline
+    </button>
+    <a class="btn btn-ghost btn-sm" style="margin-top:6px;width:100%;justify-content:center;"
        href="${API_BASE}/api/download-report/${encodeURIComponent(trace.entity_id)}">
       <i class="fa-solid fa-file-word"></i> Full forensic report
     </a>`;
