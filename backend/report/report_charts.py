@@ -369,7 +369,13 @@ def render_money_flow_png(network_graph, scored_entities, entity_id,
         on_chain = (u, v) in layering_hops
         x0, y0 = positions[u]
         x1, y1 = positions[v]
-        ax.text((x0 + x1) / 2, (y0 + y1) / 2 + 0.06, f"₹{weight:,.0f}",
+        # Offset the amount perpendicular to the edge, following the same side the
+        # arc bulges towards. Nudging it straight up dropped the label of a vertical
+        # edge on top of the node caption underneath.
+        dx, dy = x1 - x0, y1 - y0
+        norm = math.hypot(dx, dy) or 1.0
+        off_x, off_y = -dy / norm * 0.10, dx / norm * 0.10
+        ax.text((x0 + x1) / 2 + off_x, (y0 + y1) / 2 + off_y, f"₹{weight:,.0f}",
                 fontsize=6.4, ha="center", va="center",
                 color=LAYERING if on_chain else INK,
                 fontweight="bold" if on_chain else "normal",
