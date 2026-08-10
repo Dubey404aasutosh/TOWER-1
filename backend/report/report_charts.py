@@ -266,43 +266,60 @@ def render_money_flow_png(network_graph, scored_entities, entity_id,
     fig, ax = plt.subplots(figsize=(width_in, height_in))
     ax.set_axis_off()
 
-    seen = set()
+    # Collect the edges among the drawn nodes once, rather than probing every
+    # ordered pair — the focus entity can have a large neighbourhood.
+    node_set = set(nodes)
+    drawn_edges = []
     for u in nodes:
-        for v in nodes:
-            if u == v or (u, v) in seen or not network_graph.has_edge(u, v):
-                continue
-            seen.add((u, v))
-            data = network_graph[u][v]
-            is_txn = data.get("edge_type") == "transaction"
-            weight = float(data.get("weight", 0) or 0)
-            on_chain = (u, v) in layering_hops
+        for v in network_graph.successors(u):
+            if v in node_set and u != v:
+                drawn_edges.append((u, v, network_graph[u][v]))
 
-            if on_chain:
-                colour, lw, alpha = LAYERING, 2.6, 0.95
-            elif is_txn:
-                colour, lw, alpha = "#3d5a8a", 1.5, 0.65
-            else:
-                colour, lw, alpha = MUTED, 1.0, 0.4
+    for u, v, data in drawn_edges:
+        is_txn = data.get("edge_type") == "transaction"
+        weight = float(data.get("weight", 0) or 0)
+        on_chain = (u, v) in layering_hops
 
-            x0, y0 = positions[u]
-            x1, y1 = positions[v]
-            ax.add_patch(FancyArrowPatch(
-                (x0, y0), (x1, y1),
-                connectionstyle="arc3,rad=0.14",
-                arrowstyle="-|>", mutation_scale=11,
-                color=colour, lw=lw, alpha=alpha,
-                linestyle="-" if is_txn else (0, (3, 2)),
-                shrinkA=13, shrinkB=13, zorder=2,
-            ))
+        if on_chain:
+            colour, lw, alpha = LAYERING, 2.6, 0.95
+        elif is_txn:
+            colour, lw, alpha = "#3d5a8a", 1.5, 0.65
+        else:
+            colour, lw, alpha = MUTED, 1.0, 0.4
 
-            if is_txn and weight > 0:
-                mx, my = (x0 + x1) / 2, (y0 + y1) / 2
-                ax.text(mx, my + 0.06, f"₹{weight:,.0f}",
-                        fontsize=6.4, ha="center", va="center",
-                        color=LAYERING if on_chain else INK,
-                        fontweight="bold" if on_chain else "normal",
-                        bbox=dict(boxstyle="round,pad=0.16", fc="white",
-                                  ec="none", alpha=0.82), zorder=5)
+        x0, y0 = positions[u]
+        x1, y1 = positions[v]
+        ax.add_patch(FancyArrowPatch(
+            (x0, y0), (x1, y1),
+            connectionstyle="arc3,rad=0.14",
+            arrowstyle="-|>", mutation_scale=11,
+            color=colour, lw=lw, alpha=alpha,
+            linestyle="-" if is_txn else (0, (3, 2)),
+            shrinkA=13, shrinkB=13, zorder=2,
+        ))
+
+    # Only the largest transfers carry a printed amount. Every edge labelled turns
+    # a 20-edge neighbourhood into overlapping text; a layering hop is always
+    # labelled regardless of rank, because that is the number being alleged.
+    labelled = sorted(
+        (e for e in drawn_edges if e[2].get("edge_type") == "transaction"
+         and float(e[2].get("weight", 0) or 0) > 0),
+        key=lambda e: float(e[2].get("weight", 0) or 0), reverse=True,
+    )[:8]
+    labelled += [e for e in drawn_edges
+                 if (e[0], e[1]) in layering_hops and e not in labelled]
+
+    for u, v, data in labelled:
+        weight = float(data.get("weight", 0) or 0)
+        on_chain = (u, v) in layering_hops
+        x0, y0 = positions[u]
+        x1, y1 = positions[v]
+        ax.text((x0 + x1) / 2, (y0 + y1) / 2 + 0.06, f"₹{weight:,.0f}",
+                fontsize=6.4, ha="center", va="center",
+                color=LAYERING if on_chain else INK,
+                fontweight="bold" if on_chain else "normal",
+                bbox=dict(boxstyle="round,pad=0.16", fc="white",
+                          ec="none", alpha=0.82), zorder=5)
 
     for node in nodes:
         x, y = positions[node]
