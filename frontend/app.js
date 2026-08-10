@@ -548,13 +548,11 @@ const MOCK_POIS = [
   { id: 'ENT-0021', name: 'Harini Choudhury', alias: 'harini.c', risk: 21, tier: 'MEDIUM', phones: ['+91-9822263902'], accounts: ['HDFC-xxxx1144'], rules: ['TCS-2'], cases: ['CASE-2026-00389'] },
 ];
 
-const MOCK_EVIDENCE = [
-  { name: 'bank_sbi.xlsx', type: 'xlsx', size: '2.4 MB', rows: 847, hash: 'a3f8c91b2d44e6f7...', status: 'VERIFIED' },
-  { name: 'bank_hdfc.csv', type: 'csv', size: '1.1 MB', rows: 612, hash: 'b7d2e84c1a33f5e9...', status: 'VERIFIED' },
-  { name: 'bank_icici.pdf', type: 'pdf', size: '3.8 MB', rows: 394, hash: '9f1a72b5c8e4d3a2...', status: 'VERIFIED' },
-  { name: 'cdr_export.csv', type: 'csv', size: '4.2 MB', rows: 1135, hash: 'c2d3e4f5a6b7c8d9...', status: 'VERIFIED' },
-  { name: 'ipdr_export.csv', type: 'csv', size: '2.9 MB', rows: 607, hash: 'd1e2f3a4b5c6d7e8...', status: 'VERIFIED' },
-];
+/* Evidence files are NEVER mocked. This array is filled only from
+   GET /api/evidence-files, where every size, row count and SHA-256 digest is
+   measured server-side by hashlib. If the backend is unreachable the vault
+   renders an explicit empty state instead of placeholder data. */
+let EVIDENCE_FILES = [];
 
 const MOCK_TRACE = [
   { rule: 'MUL-1', entity: 'ENT-0037', desc: '30-day dormancy → ₹2.4L inflow → 94% outflow within 8h.', ts: '2026-07-23 09:14:22' },
@@ -587,8 +585,8 @@ const MOCK_ACTIVITY = [
   { type: 'blue', action: 'Pipeline run completed — <strong>13 rule firings</strong> across 7 deterministic rules.', time: '20 min ago' },
   { type: 'green', action: 'Report sealed — <strong>CASE-2026-00412</strong> forensic package Sec 65B certified.', time: '24 min ago' },
   { type: 'warn', action: '<strong>LOC-1</strong> flagged — ENT-0045 SIM geo mismatch (Ahmedabad vs Surat).', time: '32 min ago' },
-  { type: 'muted', action: 'File ingested: <strong>cdr_export.csv</strong> — 1,135 events, SHA-256 verified.', time: '38 min ago' },
-  { type: 'muted', action: 'File ingested: <strong>ipdr_export.csv</strong> — 607 sessions, SHA-256 verified.', time: '41 min ago' },
+  { type: 'muted', action: 'File ingested: <strong>cdr_export.csv</strong> — call detail records parsed.', time: '38 min ago' },
+  { type: 'muted', action: 'File ingested: <strong>ipdr_export.csv</strong> — IP sessions parsed.', time: '41 min ago' },
   { type: 'green', action: 'API status check — all subsystems <strong>operational</strong>.', time: '1h ago' },
 ];
 
@@ -851,22 +849,72 @@ function downloadSTRReport(entityId) {
 }
 
 /* ── EVIDENCE & TRACE ───────────────────────────────────────────── */
+function formatBytes(bytes) {
+  if (bytes == null || isNaN(bytes)) return '— bytes';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function fileIconClass(ext) {
+  if (ext === 'xlsx' || ext === 'xls') return 'fa-file-excel';
+  if (ext === 'pdf') return 'fa-file-pdf';
+  if (ext === 'csv') return 'fa-file-csv';
+  return 'fa-file-lines';
+}
+
+/* Pulls the real chain-of-custody listing (hashlib SHA-256, true row counts). */
+async function fetchEvidenceFiles() {
+  try {
+    const res = await fetch(`${API_BASE}/api/evidence-files`, { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) return;
+    const data = await res.json();
+    EVIDENCE_FILES = data.files || [];
+    populateEvidence();
+  } catch (e) {
+    console.warn('fetchEvidenceFiles err:', e);
+  }
+}
+
 function populateEvidence() {
   const evList = document.getElementById('evidence-list');
   if (evList) {
-    evList.innerHTML = MOCK_EVIDENCE.map(e => `
+    if (!EVIDENCE_FILES.length) {
+      evList.innerHTML = `
+        <div class="evidence-empty" style="padding:22px;text-align:center;color:var(--text-muted);font-size:13px;">
+          <i class="fa-solid fa-folder-open" style="display:block;font-size:20px;margin-bottom:8px;opacity:0.5;"></i>
+          No ingested evidence files. Start the backend and run the pipeline —
+          digests are computed at ingest and shown here, never pre-filled.
+        </div>`;
+    } else {
+      evList.innerHTML = EVIDENCE_FILES.map(e => {
+        const ext = (e.extension || '').toLowerCase();
+        const rows = e.rows_parsed != null
+          ? `${Number(e.rows_parsed).toLocaleString()} rows parsed` +
+            (e.rows_skipped ? ` · <span style="color:var(--orange);">${Number(e.rows_skipped).toLocaleString()} skipped</span>` : '')
+          : 'not yet ingested';
+        const digest = e.sha256
+          ? `<div class="ev-hash" title="SHA-256 (hashlib): ${e.sha256}">SHA-256: ${e.sha256.slice(0, 24)}…</div>`
+          : `<div class="ev-hash" title="Digest unavailable">SHA-256: unavailable</div>`;
+        const tag = e.modified_since_ingest
+          ? `<span class="tag tag-orange" style="flex-shrink:0;" title="File on disk no longer matches the digest recorded at ingest"><i class="fa-solid fa-triangle-exclamation"></i> CHANGED</span>`
+          : (e.status === 'PARSED'
+              ? `<span class="tag tag-green" style="flex-shrink:0;"><i class="fa-solid fa-check"></i> HASHED</span>`
+              : `<span class="tag tag-orange" style="flex-shrink:0;">${e.status || 'PENDING'}</span>`);
+        return `
       <div class="evidence-item">
-        <div class="ev-icon ${e.type}">
-          <i class="fa-solid ${e.type === 'xlsx' ? 'fa-file-excel' : e.type === 'pdf' ? 'fa-file-pdf' : 'fa-file-csv'}"></i>
+        <div class="ev-icon ${ext}">
+          <i class="fa-solid ${fileIconClass(ext)}"></i>
         </div>
         <div>
-          <div class="ev-name">${e.name}</div>
-          <div class="ev-meta">${e.size} · ${e.rows.toLocaleString()} rows</div>
+          <div class="ev-name">${e.filename}</div>
+          <div class="ev-meta">${formatBytes(e.size_bytes)} · ${rows}</div>
         </div>
-        <div class="ev-hash" title="${e.hash}">SHA-256: ${e.hash}</div>
-        <span class="tag tag-green" style="flex-shrink:0;"><i class="fa-solid fa-check"></i> ${e.status}</span>
-      </div>
-    `).join('');
+        ${digest}
+        ${tag}
+      </div>`;
+      }).join('');
+    }
   }
 
   const traceList = document.getElementById('trace-list');
@@ -1045,7 +1093,9 @@ function openSlideOver(caseId) {
     <div class="so-section">
       <div class="so-section-title">Evidence Files</div>
       <div class="evidence-chips">
-        ${MOCK_EVIDENCE.map(e => `<div class="ev-chip"><i class="fa-solid ${e.type === 'xlsx' ? 'fa-file-excel' : e.type === 'pdf' ? 'fa-file-pdf' : 'fa-file-csv'}"></i>${e.name}</div>`).join('')}
+        ${EVIDENCE_FILES.length
+          ? EVIDENCE_FILES.map(e => `<div class="ev-chip"><i class="fa-solid ${fileIconClass((e.extension || '').toLowerCase())}"></i>${e.filename}</div>`).join('')
+          : '<div class="ev-chip" style="opacity:0.6;"><i class="fa-solid fa-circle-info"></i>No ingested files</div>'}
       </div>
     </div>
 
@@ -1200,18 +1250,29 @@ async function fetchAPIStatus() {
     if (res.ok) {
       const data = await res.json();
       const count = data.entity_count || 0;
-      text.textContent = count > 0 ? `${count} Entities Ready` : 'System Ready';
+      text.textContent = count > 0 ? `${count.toLocaleString()} Entities Ready` : 'System Ready';
       pill.querySelector('.pulse-dot').className = 'pulse-dot green';
       // Populate with real data if available
       if (data.pipeline_run) {
         fetchRealResults();
         fetchVerificationSummary();
+        fetchEvidenceFiles();
       }
     }
   } catch {
-    text.textContent = 'Demo Mode';
+    text.textContent = 'Backend Offline';
     pill.querySelector('.pulse-dot').className = 'pulse-dot blue';
+    markKPIsUnavailable();
   }
+}
+
+/* With no backend there is no dataset — show an explicit dash rather than a
+   plausible-looking number the panel would read as real. */
+function markKPIsUnavailable() {
+  ['kpi-entities', 'kpi-cases', 'kpi-critical', 'kpi-resolved'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && (el.textContent === '0' || el.textContent === '')) el.textContent = '—';
+  });
 }
 
 async function fetchRealResults() {
@@ -1220,12 +1281,15 @@ async function fetchRealResults() {
     if (!res.ok) return;
     const data = await res.json();
     appState.results = data;
-    // Update KPIs with real numbers
+
+    // KPI tiles read the real API contract: everything lives under data.metrics.
+    // Nothing below is hardcoded — swap the dataset and every tile moves.
+    const m = data.metrics || {};
     const kpiMap = {
-      'kpi-entities': data.entity_count,
-      'kpi-cases': data.high_risk_count,
-      'kpi-critical': data.critical_count,
-      'kpi-resolved': data.anomaly_count,
+      'kpi-entities': m.total_entities,
+      'kpi-cases': m.flagged_suspects,
+      'kpi-critical': (m.critical_count || 0) + (m.high_count || 0),
+      'kpi-resolved': m.ml_anomalies,
     };
     Object.entries(kpiMap).forEach(([id, val]) => {
       if (val != null) {
@@ -1234,6 +1298,8 @@ async function fetchRealResults() {
       }
     });
     animateKPICounters();
+    updateKPIContext(m);
+    populateRuleGrid(data.rule_firings);
 
     if (data.suspects && data.suspects.length > 0) {
       MOCK_POIS.length = 0;
@@ -1372,6 +1438,8 @@ async function openPipeline() {
   await pipelinePromise;
   await fetchRealResults();
   await fetchAPIStatus();
+  await fetchEvidenceFiles();
+  await fetchVerificationSummary();
 
   // Auto-close modal after 700ms and transition to Dashboard
   setTimeout(() => {
@@ -1626,6 +1694,20 @@ function handleBucketFiles(bucket, fileList) {
   updateUploadSummary();
 }
 
+/* Real SHA-256 of the staged file, computed in-browser with WebCrypto over the
+   actual bytes. Returns null where WebCrypto is unavailable (insecure context) —
+   in that case the UI shows nothing rather than inventing a digest. */
+async function computeFileSHA256(file) {
+  try {
+    if (!window.crypto || !window.crypto.subtle) return null;
+    const buf = await file.arrayBuffer();
+    const digest = await window.crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return null;
+  }
+}
+
 function renderBucketList(bucket) {
   const list = document.getElementById(`list-${bucket}`);
   if (!list) return;
@@ -1634,7 +1716,7 @@ function renderBucketList(bucket) {
   files.forEach((f, idx) => {
     const iconClass = bucket === 'cdr' ? 'fa-phone' : bucket === 'ipdr' ? 'fa-wifi' : bucket === 'bank' ? 'fa-file-invoice-dollar' : 'fa-file-shield';
     const color = bucket === 'cdr' ? 'var(--orange)' : bucket === 'ipdr' ? '#3D7CFF' : bucket === 'bank' ? '#2ECC71' : '#a78bfa';
-    const hash = 'sha256:' + Math.random().toString(36).substring(2, 10) + f.name.length;
+    const hashId = `stage-hash-${bucket}-${idx}`;
 
     const li = document.createElement('li');
     li.className = 'bucket-file-item';
@@ -1644,12 +1726,26 @@ function renderBucketList(bucket) {
         <span style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.name}</span>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
-        <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);">${(f.size / 1024).toFixed(1)} KB</span>
-        <span style="font-family:var(--font-mono);font-size:9.5px;background:rgba(46,204,113,0.1);color:#2ECC71;padding:1px 5px;border-radius:3px;">${hash.substring(0, 12)}…</span>
+        <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);">${formatBytes(f.size)}</span>
+        <span id="${hashId}" style="font-family:var(--font-mono);font-size:9.5px;background:rgba(148,163,184,0.12);color:var(--text-muted);padding:1px 5px;border-radius:3px;" title="Computing SHA-256…">hashing…</span>
         <button onclick="removeBucketFile('${bucket}', ${idx})" style="background:none;border:none;color:var(--text-muted);cursor:pointer;" title="Remove"><i class="fa-solid fa-xmark"></i></button>
       </div>
     `;
     list.appendChild(li);
+
+    // Digest is computed asynchronously from the real file bytes.
+    computeFileSHA256(f).then(hex => {
+      const el = document.getElementById(hashId);
+      if (!el) return;
+      if (hex) {
+        el.textContent = `${hex.slice(0, 12)}…`;
+        el.title = `SHA-256 (WebCrypto): ${hex}`;
+        el.style.background = 'rgba(46,204,113,0.1)';
+        el.style.color = '#2ECC71';
+      } else {
+        el.remove();
+      }
+    });
   });
 }
 

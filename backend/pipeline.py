@@ -6,6 +6,7 @@ With progress callbacks for real-time Streamlit status updates.
 """
 import sys
 import os
+import hashlib
 from pathlib import Path
 
 import pandas as pd
@@ -22,6 +23,24 @@ from scoring.risk_engine import run_risk_engine
 from graph.network_builder import build_network_graph, create_network_plotly, create_timeline_plotly
 from report.forensic_report import generate_reports_for_flagged
 from verification.verify import verify_against_ground_truth
+
+
+def sha256_file(path, chunk_size=1024 * 1024):
+    """
+    Compute the real SHA-256 digest of a file by streaming it through hashlib.
+
+    This is the only source of any hash string shown in the UI or written into a
+    report — nothing in E-Rakshak fabricates or truncates a digest for display.
+    Returns the lowercase hex digest, or None if the file cannot be read.
+    """
+    try:
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(chunk_size), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except Exception:
+        return None
 
 
 def run_pipeline(data_dir=None, window_minutes=10, generate_reports=False, progress_callback=None):
@@ -42,7 +61,10 @@ def run_pipeline(data_dir=None, window_minutes=10, generate_reports=False, progr
     data_dir = Path(data_dir)
 
     total_steps = 8
-    quality = {"steps": [], "errors": [], "warnings": []}
+    # "files" holds one provenance record per ingested file: real byte size, real
+    # hashlib SHA-256 digest and the true parsed/skipped row counts. This is what
+    # the Evidence Vault renders — there is no fabricated chain-of-custody data.
+    quality = {"steps": [], "errors": [], "warnings": [], "files": []}
 
     def notify(step_name, step_num, detail=""):
         msg = f"[{step_num}/{total_steps}] {step_name}"
@@ -72,10 +94,27 @@ def run_pipeline(data_dir=None, window_minutes=10, generate_reports=False, progr
                 if f.is_file() and not f.name.endswith('.json') and f.suffix.lower() in ['.csv', '.xlsx', '.xls', '.pdf']:
                     print(f"  Parsing file: {f.name}")
                     file_events, summary = parse_messy_file(f)
+
+                    record = {
+                        "filename": f.name,
+                        "extension": f.suffix.lower().lstrip("."),
+                        "size_bytes": f.stat().st_size,
+                        "sha256": sha256_file(f),
+                        "detected_type": summary.get("detected_type"),
+                        "confidence": summary.get("confidence"),
+                        "total_rows": summary.get("total_rows"),
+                        "rows_parsed": summary.get("parsed_rows", len(file_events)),
+                        "rows_skipped": summary.get("skipped_rows"),
+                        "status": "PARSED",
+                        "error": summary.get("error"),
+                    }
+
                     if "error" in summary:
+                        record["status"] = "FAILED"
+                        quality["files"].append(record)
                         quality["warnings"].append(f"Skipped {f.name}: {summary['error']}")
                         continue
-                    
+
                     det_type = summary.get("detected_type")
                     if det_type == "bank":
                         bank_events.extend(file_events)
@@ -84,7 +123,18 @@ def run_pipeline(data_dir=None, window_minutes=10, generate_reports=False, progr
                     elif det_type == "ipdr":
                         ipdr_events.extend(file_events)
                     else:
+                        record["status"] = "UNRECOGNISED"
                         quality["warnings"].append(f"Skipped {f.name}: Unknown file type")
+
+                    skipped = record.get("rows_skipped")
+                    if skipped:
+                        quality["warnings"].append(
+                            f"{f.name}: {skipped} row(s) could not be parsed and were excluded"
+                        )
+                    print(f"    -> {record['rows_parsed']} row(s) parsed, {skipped if skipped is not None else 'unknown'} skipped"
+                          f" · sha256:{(record['sha256'] or '')[:16]}…")
+
+                    quality["files"].append(record)
     except Exception as e:
         quality["errors"].append(f"Ingestion critical error: {str(e)}")
 
@@ -93,8 +143,12 @@ def run_pipeline(data_dir=None, window_minutes=10, generate_reports=False, progr
     print(f"  IPDR events: {len(ipdr_events)}")
 
     total_parsed = len(bank_events) + len(cdr_events) + len(ipdr_events)
+    total_skipped = sum((rec.get("rows_skipped") or 0) for rec in quality["files"])
     print(f"  TOTAL PARSED: {total_parsed}")
-    quality["steps"].append({"name": "Ingestion", "bank": len(bank_events), "cdr": len(cdr_events), "ipdr": len(ipdr_events), "total": total_parsed})
+    print(f"  TOTAL SKIPPED (unparseable rows): {total_skipped}")
+    quality["steps"].append({"name": "Ingestion", "bank": len(bank_events), "cdr": len(cdr_events),
+                             "ipdr": len(ipdr_events), "total": total_parsed, "skipped": total_skipped,
+                             "files": len(quality["files"])})
 
     # ---- STEP 2: ENTITY RESOLUTION ----
     notify("Resolving entities", 2, "Building identity graph...")

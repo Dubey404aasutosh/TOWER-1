@@ -1,8 +1,9 @@
 import os
 import sys
-import shutil
 import json
+import hashlib
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import List
 import pandas as pd
@@ -22,7 +23,7 @@ BACKEND_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BACKEND_DIR))
 
 # Import E-Rakshak pipeline methods
-from pipeline import run_pipeline
+from pipeline import run_pipeline, sha256_file
 from graph.map_builder import CELL_TOWERS
 
 app = FastAPI(title="E-Rakshak API", version="2.0.0")
@@ -101,12 +102,21 @@ def get_status():
     files = []
     if active_dir.exists():
         files = [f.name for f in active_dir.iterdir() if f.is_file() and f.name not in ["ground_truth.json"]]
-        
+
+    # Counts come from the last real pipeline run; 0 until one has completed.
+    entity_count = 0
+    event_count = 0
+    if STATE["pipeline_run"] and STATE["last_results"] is not None:
+        entity_count = len(STATE["last_results"].get("entities", {}) or {})
+        event_count = len(STATE["last_results"].get("all_events", []) or [])
+
     return {
         "data_mode": STATE["data_mode"],
         "pipeline_run": STATE["pipeline_run"],
         "uploaded_files": files,
-        "files_count": len(files)
+        "files_count": len(files),
+        "entity_count": entity_count,
+        "event_count": event_count
     }
 
 
@@ -138,15 +148,90 @@ async def upload_files(files: List[UploadFile] = File(...)):
         clean_name = Path(file.filename).name
         target_path = UPLOAD_DIR / clean_name
         try:
+            # Stream to disk and digest in the same pass — the SHA-256 returned to
+            # the client is computed by hashlib over the exact bytes written, so it
+            # is a real chain-of-custody stamp for the received file.
+            digest = hashlib.sha256()
+            size_bytes = 0
             with open(target_path, "wb") as f:
-                shutil.copyfileobj(file.file, f)
-            saved_files.append(clean_name)
-            logger.info(f"File uploaded successfully: {clean_name}")
+                while True:
+                    chunk = await file.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+                    size_bytes += len(chunk)
+                    f.write(chunk)
+
+            saved_files.append({
+                "filename": clean_name,
+                "size_bytes": size_bytes,
+                "sha256": digest.hexdigest()
+            })
+            logger.info(f"File uploaded: {clean_name} ({size_bytes} bytes) sha256={digest.hexdigest()}")
         except Exception as e:
             logger.error(f"Error saving file {clean_name}: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Failed to upload {clean_name}: {str(e)}")
-            
-    return {"status": "success", "uploaded": saved_files, "mode": "upload"}
+
+    return {
+        "status": "success",
+        "uploaded": saved_files,
+        "filenames": [f["filename"] for f in saved_files],
+        "hash_algorithm": "SHA-256",
+        "mode": "upload"
+    }
+
+
+@app.get("/api/evidence-files")
+def get_evidence_files():
+    """
+    Chain-of-custody listing for the currently active dataset.
+
+    Every field here is measured, never asserted: byte size from the filesystem,
+    SHA-256 recomputed now with hashlib, and parsed/skipped row counts taken from
+    the last pipeline run. If a file has not been ingested yet, its row counts are
+    returned as null rather than filled in with a plausible-looking number.
+    """
+    active_dir = UPLOAD_DIR if STATE["data_mode"] == "upload" else RAW_DIR
+
+    # Per-file parse stats recorded by the pipeline during ingestion
+    ingest_stats = {}
+    if STATE["last_results"] is not None:
+        for rec in STATE["last_results"].get("quality", {}).get("files", []) or []:
+            ingest_stats[rec.get("filename")] = rec
+
+    files = []
+    if active_dir.exists():
+        for f in sorted(active_dir.iterdir(), key=lambda p: p.name):
+            if not f.is_file() or f.name == "ground_truth.json":
+                continue
+
+            rec = ingest_stats.get(f.name, {})
+            current_digest = sha256_file(f)
+            ingest_digest = rec.get("sha256")
+
+            files.append({
+                "filename": f.name,
+                "extension": f.suffix.lower().lstrip("."),
+                "size_bytes": f.stat().st_size,
+                "sha256": current_digest,
+                "sha256_at_ingest": ingest_digest,
+                "modified_since_ingest": bool(ingest_digest and current_digest and ingest_digest != current_digest),
+                "detected_type": rec.get("detected_type"),
+                "total_rows": rec.get("total_rows"),
+                "rows_parsed": rec.get("rows_parsed"),
+                "rows_skipped": rec.get("rows_skipped"),
+                "status": rec.get("status") if rec else "NOT INGESTED",
+                "error": rec.get("error"),
+            })
+
+    return JSONResponse(content=clean_serializable({
+        "data_mode": STATE["data_mode"],
+        "pipeline_run": STATE["pipeline_run"],
+        "hash_algorithm": "SHA-256",
+        "hash_source": "python hashlib, streamed over the file on disk",
+        "files": files,
+        "files_count": len(files)
+    }))
 
 
 
@@ -220,13 +305,17 @@ def get_results():
     tier_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
     ml_count = 0
     suspects_list = []
-    
+    rule_firings = {}
+
     for eid, score_data in scored_entities.items():
         tier = score_data.get("risk_tier", "LOW")
         tier_counts[tier] = tier_counts.get(tier, 0) + 1
         if score_data.get("ml_anomaly", False):
             ml_count += 1
-            
+
+        for rule_id in score_data.get("rules_fired", []):
+            rule_firings[rule_id] = rule_firings.get(rule_id, 0) + 1
+
         # Get identifier collections
         ent_details = entities.get(eid, {})
         
@@ -312,8 +401,11 @@ def get_results():
             "medium_count": tier_counts["MEDIUM"],
             "low_count": tier_counts["LOW"],
             "ml_anomalies": ml_count,
-            "flagged_suspects": tier_counts["CRITICAL"] + tier_counts["HIGH"] + tier_counts["MEDIUM"]
+            "flagged_suspects": tier_counts["CRITICAL"] + tier_counts["HIGH"] + tier_counts["MEDIUM"],
+            "total_rule_firings": sum(rule_firings.values()),
+            "rules_fired_count": len(rule_firings)
         },
+        "rule_firings": rule_firings,
         "suspects": clean_serializable(suspects_list),
         "map_towers": towers_map,
         "network": {
