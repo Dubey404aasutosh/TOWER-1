@@ -88,7 +88,7 @@ def auto_commit_loop(interval=10):
         time.sleep(interval)
 
 if __name__ == "__main__":
-    interval = 10
+    interval = 140
     if len(sys.argv) > 1 and sys.argv[1].isdigit():
         interval = int(sys.argv[1])
     auto_commit_loop(interval)
