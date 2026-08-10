@@ -175,41 +175,44 @@
         </div>
 
         <div class="kpi-grid">
+          <!-- Every value, chip and sub-line below is written by updateKPIContext()
+               from GET /api/results → data.metrics. data-target starts at 0 so no
+               figure is ever displayed that did not come from the current run. -->
           <div class="kpi-card">
             <div class="kpi-top">
               <div class="kpi-icon orange"><i class="fa-solid fa-diagram-project"></i></div>
-              <span class="kpi-trend up"><i class="fa-solid fa-arrow-trend-up"></i> +141 new</span>
+              <span class="kpi-trend up" id="kpi-entities-chip"><i class="fa-solid fa-fingerprint"></i> — KYC-anchored</span>
             </div>
-            <div class="kpi-value" data-target="1521" id="kpi-entities">0</div>
+            <div class="kpi-value" data-target="0" id="kpi-entities">0</div>
             <div class="kpi-label">Entities Resolved</div>
-            <div class="kpi-sub">From 2,372 Bank+CDR+IPDR events</div>
+            <div class="kpi-sub" id="kpi-entities-sub">From — Bank + CDR + IPDR events</div>
           </div>
           <div class="kpi-card">
             <div class="kpi-top">
               <div class="kpi-icon blue"><i class="fa-solid fa-folder-open"></i></div>
-              <span class="kpi-trend up"><i class="fa-solid fa-arrow-trend-up"></i> +3 today</span>
+              <span class="kpi-trend up" id="kpi-cases-chip"><i class="fa-solid fa-gavel"></i> — rule firings</span>
             </div>
-            <div class="kpi-value" data-target="47" id="kpi-cases">0</div>
-            <div class="kpi-label">Active Cases</div>
-            <div class="kpi-sub">Across 3 Surat districts</div>
+            <div class="kpi-value" data-target="0" id="kpi-cases">0</div>
+            <div class="kpi-label">Flagged Entities</div>
+            <div class="kpi-sub" id="kpi-cases-sub">CRITICAL + HIGH + MEDIUM tiers</div>
           </div>
           <div class="kpi-card">
             <div class="kpi-top">
               <div class="kpi-icon red"><i class="fa-solid fa-triangle-exclamation"></i></div>
-              <span class="kpi-trend danger"><i class="fa-solid fa-arrow-trend-up"></i> +2 critical</span>
+              <span class="kpi-trend danger" id="kpi-critical-chip"><i class="fa-solid fa-triangle-exclamation"></i> — CRITICAL</span>
             </div>
-            <div class="kpi-value" data-target="5" id="kpi-critical">0</div>
+            <div class="kpi-value" data-target="0" id="kpi-critical">0</div>
             <div class="kpi-label">HIGH / CRITICAL Entities</div>
-            <div class="kpi-sub">Rule-gated risk tier scoring</div>
+            <div class="kpi-sub" id="kpi-critical-sub">Rule-gated risk tier scoring</div>
           </div>
           <div class="kpi-card">
             <div class="kpi-top">
               <div class="kpi-icon green"><i class="fa-solid fa-circle-check"></i></div>
-              <span class="kpi-trend up"><i class="fa-solid fa-arrow-trend-up"></i> 13 firings</span>
+              <span class="kpi-trend up" id="kpi-resolved-chip"><i class="fa-solid fa-robot"></i> unsupervised</span>
             </div>
-            <div class="kpi-value" data-target="16" id="kpi-resolved">0</div>
+            <div class="kpi-value" data-target="0" id="kpi-resolved">0</div>
             <div class="kpi-label">ML Anomaly Flags</div>
-            <div class="kpi-sub">IsolationForest · separate flag</div>
+            <div class="kpi-sub" id="kpi-resolved-sub">IsolationForest · separate flag</div>
           </div>
           <div class="kpi-card kpi-card-accuracy" id="kpi-accuracy-card" title="Live self-verification against planted ground-truth fraud typologies. Recomputed on every pipeline run.">
             <div class="kpi-top">

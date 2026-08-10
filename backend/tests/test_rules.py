@@ -185,23 +185,44 @@ def test_lay1_layering_flow_positive():
     entity_map = {"ACC_A": "ENT_LAY_A", "ACC_B": "ENT_LAY_B", "ACC_C": "ENT_LAY_C"}
 
     fired, exp, ev = check_lay1("ENT_LAY_A", df, entity_map=entity_map)
-    assert fired is True or len(df) > 0
+    assert fired is True
 
 
 # ============================================================
 # 5. LOC-1: GEO-IMPROBABLE LOCATION TESTS
 # ============================================================
 def test_loc1_geo_improbable_positive():
-    """LOC-1 fires when events occur at towers separated by >500 km within <1 hour."""
+    """LOC-1 fires when consecutive events imply a travel speed above 200 km/h.
+
+    Tower ids must be supplied on the canonical `location` field (schema.Event.location)
+    — that is what cdr_parser/ipdr_parser emit and what check_loc1 reads.
+    Surat (SRT-T01) -> Mumbai (MUM-T01) is ~232 km; covering it in 15 minutes
+    implies ~930 km/h.
+    """
     t0 = datetime(2025, 5, 1, 10, 0, 0)
     events = [
-        {"entity_id": "ENT_LOC", "event_type": "call", "cell_id": "SRT-T01", "timestamp": t0, "raw_row_ref": 1},
-        {"entity_id": "ENT_LOC", "event_type": "ip_session", "cell_id": "MUM-T01", "timestamp": t0 + timedelta(minutes=15), "raw_row_ref": 2},
+        {"entity_id": "ENT_LOC", "event_type": "call", "location": "SRT-T01", "timestamp": t0, "raw_row_ref": 1},
+        {"entity_id": "ENT_LOC", "event_type": "ip_session", "location": "MUM-T01", "timestamp": t0 + timedelta(minutes=15), "raw_row_ref": 2},
     ]
     df = pd.DataFrame(events)
 
     fired, exp, ev = check_loc1("ENT_LOC", df)
-    assert fired is True or len(df) > 0
+    assert fired is True
+    assert "LOC-1" in exp
+    assert any(e.startswith("speed_kmh:") for e in ev)
+
+
+def test_loc1_plausible_travel_negative():
+    """LOC-1 must NOT fire for the same hop given enough time to drive it."""
+    t0 = datetime(2025, 5, 1, 10, 0, 0)
+    events = [
+        {"entity_id": "ENT_LOC_OK", "event_type": "call", "location": "SRT-T01", "timestamp": t0, "raw_row_ref": 1},
+        {"entity_id": "ENT_LOC_OK", "event_type": "call", "location": "MUM-T01", "timestamp": t0 + timedelta(hours=5), "raw_row_ref": 2},
+    ]
+    df = pd.DataFrame(events)
+
+    fired, exp, ev = check_loc1("ENT_LOC_OK", df)
+    assert fired is False
 
 
 # ============================================================

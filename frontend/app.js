@@ -590,14 +590,16 @@ const MOCK_ACTIVITY = [
   { type: 'green', action: 'API status check — all subsystems <strong>operational</strong>.', time: '1h ago' },
 ];
 
-const MOCK_RULES = [
-  { id: 'IDR-1', name: 'Identity Fan-out', fired: true },
-  { id: 'TCS-1', name: 'Temporal Coincidence', fired: true },
-  { id: 'TCS-2', name: 'Pre-Transfer Call', fired: true },
-  { id: 'STR-1', name: 'Structuring', fired: true },
-  { id: 'LAY-1', name: 'Layering Chain', fired: false },
-  { id: 'MUL-1', name: 'Mule Signature', fired: true },
-  { id: 'LOC-1', name: 'Location Mismatch', fired: true },
+/* Static rule metadata only (ids + human names). Fired/not-fired is never
+   asserted here — it comes from data.rule_firings on the live run. */
+const RULE_CATALOG = [
+  { id: 'IDR-1', name: 'Identity Fan-out' },
+  { id: 'TCS-1', name: 'Temporal Coincidence' },
+  { id: 'TCS-2', name: 'Pre-Transfer Call' },
+  { id: 'STR-1', name: 'Structuring' },
+  { id: 'LAY-1', name: 'Layering Chain' },
+  { id: 'MUL-1', name: 'Mule Signature' },
+  { id: 'LOC-1', name: 'Location Mismatch' },
 ];
 
 const COPILOT_RESPONSES = [
@@ -664,6 +666,29 @@ function switchView(viewId, navEl) {
 }
 
 /* ── KPI COUNTERS ───────────────────────────────────────────────── */
+/* Fills every supporting line on the KPI tiles from the live metrics object,
+   so nothing on the tile survives a dataset swap unchanged. */
+function updateKPIContext(m) {
+  if (!m) return;
+  const n = v => (v == null ? '—' : Number(v).toLocaleString());
+  const set = (id, html) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = html;
+  };
+
+  set('kpi-entities-chip', `<i class="fa-solid fa-fingerprint"></i> ${n(m.kyc_anchored_entities)} KYC-anchored`);
+  set('kpi-entities-sub', `From ${n(m.total_events)} Bank + CDR + IPDR events`);
+
+  set('kpi-cases-chip', `<i class="fa-solid fa-gavel"></i> ${n(m.total_rule_firings)} rule firings`);
+  set('kpi-cases-sub', `CRITICAL + HIGH + MEDIUM tiers · ${n(m.rules_fired_count)} of 7 rules fired`);
+
+  set('kpi-critical-chip', `<i class="fa-solid fa-triangle-exclamation"></i> ${n(m.critical_count)} CRITICAL`);
+  set('kpi-critical-sub', `${n(m.critical_count)} CRITICAL · ${n(m.high_count)} HIGH — rule-gated tiers`);
+
+  set('kpi-resolved-chip', `<i class="fa-solid fa-robot"></i> unsupervised`);
+  set('kpi-resolved-sub', `IsolationForest · advisory flag, not a risk tier`);
+}
+
 function animateKPICounters() {
   document.querySelectorAll('[data-target]').forEach(el => {
     const target = parseInt(el.getAttribute('data-target'), 10);
@@ -721,16 +746,32 @@ function populateDashboard() {
   });
 }
 
-function populateRuleGrid() {
+/* ruleFirings: { "TCS-1": 12, ... } from the live run. Cached so re-renders
+   triggered by view switches keep the real state. */
+let RULE_FIRINGS = null;
+
+function populateRuleGrid(ruleFirings) {
+  if (ruleFirings) RULE_FIRINGS = ruleFirings;
   const grid = document.getElementById('rule-grid');
   if (!grid) return;
-  grid.innerHTML = MOCK_RULES.map(r => `
-    <div class="rule-card ${r.fired ? 'fired' : ''}">
+  const counts = RULE_FIRINGS;
+  grid.innerHTML = RULE_CATALOG.map(r => {
+    if (!counts) {
+      return `
+    <div class="rule-card">
       <span class="rule-card-id">${r.id}</span>
       <span class="rule-card-name">${r.name}</span>
-      <span class="rule-dot ${r.fired ? 'fired' : 'clear'}"></span>
-    </div>
-  `).join('');
+      <span class="rule-dot clear" title="Awaiting pipeline run"></span>
+    </div>`;
+    }
+    const n = counts[r.id] || 0;
+    return `
+    <div class="rule-card ${n > 0 ? 'fired' : ''}" title="${n > 0 ? `${n} entity firing(s) in the current run` : 'Did not fire on the current dataset'}">
+      <span class="rule-card-id">${r.id}</span>
+      <span class="rule-card-name">${r.name}${n > 0 ? ` · ${n}` : ''}</span>
+      <span class="rule-dot ${n > 0 ? 'fired' : 'clear'}"></span>
+    </div>`;
+  }).join('');
 }
 
 /* ── CASE TABLE ─────────────────────────────────────────────────── */
