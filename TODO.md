@@ -25,6 +25,26 @@ Four one-liners that are either credibility landmines or silent breakage.
 > Extra plumbing landed for Day 1: `quality["files"]` now carries per-file size / SHA-256 /
 > parsed / skipped counts, and the pipeline prints a `TOTAL SKIPPED` line — so **S1.3** only has
 > to fix the parser and return the true count from `smart_ingest.py:199`.
+>
+> **Rendered and inspected in headless Chrome** (CDP, live DOM read back, not just screenshots):
+> KPI tiles, Pipeline Activity, Persons of Interest, Evidence Vault, Decision Trace and the
+> staged-upload digest all carry live values; **console is clean — 0 errors, 0 failed requests.**
+> Fixed while verifying: `leaflet.css` was also loaded as a `<script>` (MIME error on every load),
+> missing favicon (404 on every load), `.ev-hash` double-truncation, and the red `danger` styling
+> on the CRITICAL chip when the count is 0. `app.js?v=` bumped so browsers pick up the new bundle.
+>
+> **Also de-mocked (fabrications the now-honest tiles directly contradicted):**
+> `MOCK_ACTIVITY` — announced a CRITICAL entity and rule firings the engine never produced, sitting
+> beside a tile reading `0 CRITICAL`. Now built from `/api/results` (`buildActivityFeed`).
+> `MOCK_TRACE` — 13 invented firings under a header naming `decision_trace.jsonl`. Now reads the
+> real file via `/api/download-trace`, with real explanations and evidence row refs.
+> `MOCK_POIS` — invented names, account numbers, and a **fabricated risk percentage** (every HIGH
+> entity showed exactly 82%). The engine assigns a *rule-gated tier and no numeric score*, so the
+> card now shows the tier plus the rule count. The grid also listed all 1,521 entities; it now
+> shows the 10 rule-flagged ones and reports the LOW-tier remainder as a count.
+> `MOCK_CASES` — kept, but labelled *"Illustrative workflow · not from this run"* on both the
+> dashboard and the registry: there is no case entity in the backend, so this is a scoping
+> decision, not a claim. Replacing it properly stays with **S2.3**.
 
 - [x] **S0.1 — Delete the fabricated SHA-256 hashes** ⏱ 20m 🔴 **BLOCKER**
   - `frontend/app.js:1637` generates `'sha256:' + Math.random().toString(36)...` and renders it in green "verified" styling.
