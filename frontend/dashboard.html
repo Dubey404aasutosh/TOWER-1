@@ -469,10 +469,20 @@
       <div class="view" id="view-network">
         <div class="page-header">
           <div>
-            <div class="breadcrumb"><span>Visualization</span><i class="fa-solid fa-chevron-right"></i><span>Entity Graph</span></div>
-            <h1 class="page-title">Identity Resolution Network — Vis.js</h1>
+            <div class="breadcrumb"><span>Visualization</span><i class="fa-solid fa-chevron-right"></i><span id="network-breadcrumb">Money Flow</span></div>
+            <h1 class="page-title" id="network-title">Money-Flow Network — Vis.js</h1>
           </div>
           <div class="page-actions">
+            <!-- Two genuinely different graphs. Money-flow answers "where did the
+                 money go"; identity answers "which identifiers are one person". -->
+            <div class="filter-group" id="network-view-toggle">
+              <button class="filter-btn active" data-view="money_flow" onclick="setNetworkView('money_flow',this)">
+                <i class="fa-solid fa-money-bill-transfer"></i> Money flow
+              </button>
+              <button class="filter-btn" data-view="identity" onclick="setNetworkView('identity',this)">
+                <i class="fa-solid fa-fingerprint"></i> Identity
+              </button>
+            </div>
             <div class="filter-group">
               <button class="filter-btn active" onclick="applyNetworkFilter('all',this)">All Nodes</button>
               <button class="filter-btn" onclick="applyNetworkFilter('critical',this)">Critical Only</button>
@@ -490,15 +500,12 @@
             <div class="network-toolbar">
               <div class="search-inline">
                 <i class="fa-solid fa-magnifying-glass"></i>
-                <input type="text" id="network-search-input" placeholder="Search nodes (e.g. ENT-0037, SBI-xxxx4421)…">
+                <input type="text" id="network-search-input" placeholder="Search nodes (e.g. ENT_0042)…">
               </div>
-              <div class="node-legend">
-                <span class="legend-item"><span class="dot red"></span> Critical Entity</span>
-                <span class="legend-item"><span class="dot orange"></span> High Entity</span>
-                <span class="legend-item"><span class="dot blue"></span> Phone</span>
-                <span class="legend-item"><span class="dot purple"></span> Account</span>
-              </div>
+              <!-- Written from the graph the backend actually returned. -->
+              <span id="network-meta" style="font-size:11.5px;color:var(--txt-muted);font-family:var(--font-mono);"></span>
             </div>
+            <div class="node-legend" id="network-legend"></div>
             <div class="network-canvas" id="identity-network"></div>
           </div>
 

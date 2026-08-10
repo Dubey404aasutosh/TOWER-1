@@ -1623,16 +1623,121 @@ function initMap() {
 /* ── ENTITY NETWORK ─────────────────────────────────────────────── */
 let rawNetworkNodes = [], rawNetworkEdges = [], networkVisData = {};
 
+/* Both graphs from the last /api/results call, keyed by view name. */
+let networkViews = null;
+let activeNetworkView = 'money_flow';
+
+const NETWORK_VIEW_META = {
+  money_flow: {
+    title: 'Money-Flow Network — Vis.js',
+    breadcrumb: 'Money Flow',
+    legend: [
+      ['#FF4D4D', 'CRITICAL entity'],
+      ['#FFB020', 'HIGH entity'],
+      ['#3D7CFF', 'MEDIUM entity'],
+      ['#2ECC71', 'LOW entity'],
+      ['#FF4D4D', 'LAY-1 layering hop', 'edge'],
+      ['#FFB020', 'TCS correlated transfer', 'edge'],
+      ['rgba(61,124,255,0.55)', 'Transfer (width ∝ amount)', 'edge'],
+      ['rgba(155,161,168,0.35)', 'Call / SMS (dashed)', 'edge'],
+    ],
+  },
+  identity: {
+    title: 'Identity Resolution Network — Vis.js',
+    breadcrumb: 'Identity Graph',
+    legend: [
+      ['#3D7CFF', 'Phone'],
+      ['#a78bfa', 'Account'],
+      ['#2ECC71', 'VPA'],
+      ['#FFB020', 'IMEI'],
+      ['#f472b6', 'IP'],
+    ],
+  },
+};
+
 function initNetwork() {
   const container = document.getElementById('identity-network');
   if (!container) return;
   if (appState.networkInstance) return; // already initialized
 
   // Try real data first
-  fetch(`${API_BASE}/api/results`, { signal: AbortSignal.timeout(3000) })
+  fetch(`${API_BASE}/api/results`, { signal: AbortSignal.timeout(5000) })
     .then(r => r.json())
-    .then(data => { if (data.network) { initNetworkWithData(data.network); } else { initNetworkMock(); } })
+    .then(data => {
+      if (data.network_views) {
+        networkViews = data.network_views;
+        setNetworkView(activeNetworkView);
+      } else if (data.network) {
+        // Older API shape — single graph, no toggle.
+        initNetworkWithData(data.network);
+      } else {
+        initNetworkMock();
+      }
+    })
     .catch(() => initNetworkMock());
+}
+
+/* Switch between the money-flow and identity graphs. Both came from the same run;
+   nothing is re-fetched or re-derived on the client. */
+function setNetworkView(kind, btn) {
+  if (!NETWORK_VIEW_META[kind]) return;
+  activeNetworkView = kind;
+
+  document.querySelectorAll('#network-view-toggle .filter-btn').forEach(b => {
+    b.classList.toggle('active', b === btn || (!btn && b.dataset.view === kind));
+  });
+
+  const meta = NETWORK_VIEW_META[kind];
+  const titleEl = document.getElementById('network-title');
+  const crumbEl = document.getElementById('network-breadcrumb');
+  if (titleEl) titleEl.textContent = meta.title;
+  if (crumbEl) crumbEl.textContent = meta.breadcrumb;
+  renderNetworkLegend(kind);
+
+  if (!networkViews || !networkViews[kind]) return;
+
+  // Force a rebuild — the two graphs have different node sets entirely.
+  appState.networkInstance = null;
+  initNetworkWithData(networkViews[kind]);
+  renderNetworkMeta(networkViews[kind].meta, kind);
+}
+
+function renderNetworkLegend(kind) {
+  const el = document.getElementById('network-legend');
+  if (!el) return;
+  const items = (NETWORK_VIEW_META[kind] || {}).legend || [];
+  el.innerHTML = items.map(([color, label, type]) => {
+    const swatch = type === 'edge'
+      ? `<span style="width:16px;height:0;border-top:3px solid ${color};flex-shrink:0;"></span>`
+      : `<span style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0;"></span>`;
+    return `<span class="legend-item">${swatch} ${label}</span>`;
+  }).join('');
+}
+
+/* Counts come from the graph the backend returned — nothing here is a constant. */
+function renderNetworkMeta(meta, kind) {
+  const el = document.getElementById('network-meta');
+  if (!el) return;
+  if (!meta) { el.textContent = ''; return; }
+
+  const parts = [];
+  if (kind === 'money_flow') {
+    parts.push(`${fmtNum(meta.rendered_nodes)} of ${fmtNum(meta.total_nodes)} entities`);
+    parts.push(`${fmtNum(meta.transaction_edges)} transfers`);
+    parts.push(`${fmtNum(meta.call_edges)} call links`);
+    if (meta.total_value) parts.push(`₹${fmtNum(Math.round(meta.total_value))} tracked`);
+    if (meta.layering_edges) parts.push(`${fmtNum(meta.layering_edges)} LAY-1 hops`);
+    if (meta.hidden_isolated_nodes) parts.push(`${fmtNum(meta.hidden_isolated_nodes)} unconnected hidden`);
+    if (meta.truncated) parts.push('truncated');
+  } else {
+    parts.push(`${fmtNum(meta.rendered_nodes)} identifiers`);
+    parts.push(`${fmtNum(meta.rendered_edges)} KYC links`);
+  }
+  el.textContent = parts.join(' · ');
+}
+
+function fmtNum(n) {
+  return (typeof n === 'number' ? n : 0).toLocaleString('en-IN');
 }
 
 function initNetworkMock() {
@@ -1697,14 +1802,24 @@ function initNetworkWithData(data) {
   const visEdges = new vis.DataSet(rawNetworkEdges);
   networkVisData = { nodes: visNodes, edges: visEdges };
 
+  // The money-flow graph is directed — an arrow is the difference between "these two
+  // accounts transacted" and "this account paid that one". The identity graph is an
+  // undirected ownership graph, so it keeps plain lines.
+  const directed = activeNetworkView === 'money_flow';
+
   const options = {
     nodes: { borderWidth: 2, shadow: false },
-    edges: { smooth: { type: 'cubicBezier', forceDirection: 'none' }, arrows: 'none' },
-    physics: {
-      stabilization: { iterations: 100 },
-      barnesHut: { springLength: 130, springConstant: 0.04 }
+    edges: {
+      smooth: { type: 'cubicBezier', forceDirection: 'none' },
+      arrows: directed ? { to: { enabled: true, scaleFactor: 0.55 } } : 'none',
+      selectionWidth: 2,
     },
-    interaction: { hover: true, dragNodes: true, zoomView: true },
+    physics: {
+      stabilization: { iterations: directed ? 200 : 100 },
+      barnesHut: { springLength: directed ? 170 : 130, springConstant: 0.04,
+                   avoidOverlap: directed ? 0.2 : 0 }
+    },
+    interaction: { hover: true, dragNodes: true, zoomView: true, tooltipDelay: 120 },
     layout: {},
   };
 
