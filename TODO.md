@@ -14,31 +14,61 @@ Never cut: `S0.1` (fabricated hashes), `S1.1` (LAY-1), `S1.4` (money-flow graph)
 
 ---
 
-# ⛑️ DAY 0 — Do these first (45 min, before anything else)
+# ⛑️ DAY 0 — Do these first (45 min, before anything else) — ✅ **DONE**
 
 Four one-liners that are either credibility landmines or silent breakage.
 
-- [ ] **S0.1 — Delete the fabricated SHA-256 hashes** ⏱ 20m 🔴 **BLOCKER**
+> **Day 0 completed & verified.** `pytest backend/tests/` → 26 passed. API exercised in-process:
+> every evidence digest re-verified against `hashlib.sha256(file_bytes)`, the entity-trace fallback
+> path returns 200, and a dataset swap (400-row alt CDR + bank csv) moved **all four** KPI tiles
+> (1521→367 entities · 10→2 flagged · 5→2 HIGH/CRITICAL · 16→25 ML flags).
+> Extra plumbing landed for Day 1: `quality["files"]` now carries per-file size / SHA-256 /
+> parsed / skipped counts, and the pipeline prints a `TOTAL SKIPPED` line — so **S1.3** only has
+> to fix the parser and return the true count from `smart_ingest.py:199`.
+
+- [x] **S0.1 — Delete the fabricated SHA-256 hashes** ⏱ 20m 🔴 **BLOCKER**
   - `frontend/app.js:1637` generates `'sha256:' + Math.random().toString(36)...` and renders it in green "verified" styling.
   - `frontend/app.js:552-557` `MOCK_EVIDENCE` ships invented digests under a **"Chain of Custody Verified"** header (`dashboard.html:435-436`).
   - **Fix:** compute a real digest in `/api/upload` (`hashlib.sha256` while streaming, ~10 lines) and return it. If short on time, **delete the hash column entirely.**
   - ✅ *Done when:* no string on screen is presented as a cryptographic hash unless it was computed by `hashlib`.
   - ⚠️ This is the only finding that reads as *dishonest* rather than *incomplete*. Fix it first.
+  - **✅ Shipped:** `sha256_file()` in `pipeline.py` (streaming `hashlib`) digests every file at ingest;
+    `/api/upload` digests the received bytes in the same pass it writes them; new `GET /api/evidence-files`
+    returns real size / digest / parsed / skipped per file and flags `modified_since_ingest`.
+    `MOCK_EVIDENCE` deleted → `EVIDENCE_FILES` (API-fed, explicit empty state when the backend is down).
+    Staged-upload rows now show a **real** WebCrypto SHA-256 of the file bytes, or no chip at all.
 
-- [ ] **S0.2 — Add missing `datetime` import** ⏱ 2m
+- [x] **S0.2 — Add missing `datetime` import** ⏱ 2m
   - `backend/main.py:460` calls `datetime.now()`; `datetime` is never imported → `NameError` → HTTP 500 on the entity-trace fallback path.
   - ✅ *Done when:* `from datetime import datetime` is at the top of `main.py`.
+  - **✅ Shipped:** import added; fallback path verified returning HTTP 200 with a real ISO timestamp.
 
-- [ ] **S0.3 — Fix the dashboard API contract mismatch** ⏱ 30m 🔴
+- [x] **S0.3 — Fix the dashboard API contract mismatch** ⏱ 30m 🔴
   - `frontend/app.js:1224-1229` reads `data.entity_count`, `data.high_risk_count`, `data.critical_count`, `data.anomaly_count` — **none exist**. The API returns `data.metrics.total_entities`, `.high_count`, `.critical_count`, `.ml_anomalies`.
   - Same bug at `app.js:1202` (`/api/status` has no `entity_count`).
   - Every KPI tile is therefore frozen on its hardcoded `data-target` in `dashboard.html:183/192/201/210`.
   - ⚠️ *Currently masked:* the hardcoded values (1521, 5, 16) happen to equal today's real values. Load any other dataset and the dashboard displays confidently wrong numbers on stage.
   - ✅ *Done when:* changing the dataset changes the KPI tiles.
+  - **✅ Shipped:** `app.js` reads `data.metrics.*`; `/api/status` now returns real `entity_count` /
+    `event_count`; `/api/results` gained `metrics.total_rule_firings`, `metrics.rules_fired_count`
+    and a `rule_firings` map. All four `data-target`s are `0` in HTML and every chip / sub-line is
+    written from live metrics. The rule grid derives fired-state from `rule_firings` instead of the
+    hardcoded `MOCK_RULES` (which claimed LAY-1 dead and the other six alive regardless of the data).
+    Tile 2 relabelled **Active Cases → Flagged Entities** — "47 active cases" was a number the system
+    never computed. Backend unreachable now renders `—`, not a plausible fake.
 
-- [ ] **S0.4 — Fix the two tautological tests** ⏱ 10m
+- [x] **S0.4 — Fix the two tautological tests** ⏱ 10m
   - `backend/tests/test_rules.py:188` and `:204`: `assert fired is True or len(df) > 0` — the right side is always true, so the LAY-1 and LOC-1 tests pass unconditionally. **This is why S1.1 went undetected.**
   - ✅ *Done when:* both assert only `fired is True` (LAY-1 will fail until S1.1 lands — that is correct).
+  - **✅ Shipped, with one correction to this TODO:** with the tautologies removed, **LAY-1 passes and
+    LOC-1 fails** — the opposite of the prediction above. LAY-1's unit test already hands `check_lay1`
+    a multi-entity frame, so it exercises the rule correctly; S1.1 is purely a *caller* bug at
+    `rules.py:827`, invisible to this test. LOC-1 failed for a real reason: the fixture put tower ids
+    on a `cell_id` field, but `schema.Event` has no such field — `cdr_parser.py:60` maps `CELL_ID` →
+    **`location`**, which is what `resolve_event_coordinates()` reads. Fixture moved to `location`
+    (Surat→Mumbai, 232 km in 15 min ⇒ ~930 km/h), assertions tightened to check the explanation and
+    the `speed_kmh:` evidence token, plus a new negative test (same hop over 5 h must not fire).
+    **26 passed.**
 
 ---
 
