@@ -43,7 +43,7 @@ def generate_commit_message(changed_files):
         parts.append(f"deleted: {', '.join(deleted[:5])}{' (and more)' if len(deleted) > 5 else ''}")
     
     summary = " | ".join(parts) if parts else "auto-update files"
-    commit_msg = f"autocommit: {summary} [{now}]"
+    commit_msg = f"{summary} [{now}]"
     return commit_msg
 
 def get_current_branch():
@@ -51,16 +51,18 @@ def get_current_branch():
     stdout, _, code = run_cmd("git rev-parse --abbrev-ref HEAD")
     return stdout if code == 0 and stdout else "main"
 
-def auto_commit_loop(interval=10):
-    """Background loop to poll and commit changes."""
+def auto_commit_loop(intervals=[80, 130, 165]):
+    """Background loop to poll and commit changes with cycling intervals."""
     repo_dir = os.path.dirname(os.path.abspath(__file__))
     print(f"[autocommit] Started monitoring repository at: {repo_dir}")
-    print(f"[autocommit] Checking for changes every {interval} seconds...\n")
+    print(f"[autocommit] Cycling intervals: {intervals} seconds\n")
     
     branch = get_current_branch()
     print(f"[autocommit] Active branch: {branch}")
     
+    cycle_idx = 0
     while True:
+        current_interval = intervals[cycle_idx % len(intervals)]
         try:
             changed_files = get_changed_files()
             if changed_files:
@@ -85,10 +87,18 @@ def auto_commit_loop(interval=10):
         except Exception as e:
             print(f"[autocommit] Error during check cycle: {e}")
         
-        time.sleep(interval)
+        cycle_idx += 1
+        next_interval = intervals[cycle_idx % len(intervals)]
+        print(f"[autocommit] Waiting {current_interval}s before next check (next interval will be {next_interval}s)...")
+        time.sleep(current_interval)
 
 if __name__ == "__main__":
-    interval = 140
-    if len(sys.argv) > 1 and sys.argv[1].isdigit():
-        interval = int(sys.argv[1])
-    auto_commit_loop(interval)
+    intervals = [80, 130, 165]
+    if len(sys.argv) > 1:
+        try:
+            intervals = [int(x) for x in sys.argv[1:] if x.isdigit()]
+            if not intervals:
+                intervals = [80, 130, 165]
+        except Exception:
+            intervals = [80, 130, 165]
+    auto_commit_loop(intervals)
