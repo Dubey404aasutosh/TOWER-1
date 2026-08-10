@@ -348,10 +348,10 @@ def render_money_flow_png(network_graph, scored_entities, entity_id,
     ax.set_title(caption, fontsize=9, color=INK, pad=6, loc="left")
 
     legend_items = [
-        Line2D([], [], color="#3d5a8a", lw=1.5, label="Transfer (amount labelled)"),
+        Line2D([], [], color="#3d5a8a", lw=1.5, label="Transfer (largest amounts labelled)"),
         Line2D([], [], color=MUTED, lw=1.0, ls="--", label="Call / SMS contact"),
     ]
-    if any((u, v) in layering_hops for u, v in seen):
+    if any((u, v) in layering_hops for u, v, _ in drawn_edges):
         legend_items.append(Line2D([], [], color=LAYERING, lw=2.6, label="LAY-1 layering chain hop"))
     ax.legend(handles=legend_items, loc="lower center", bbox_to_anchor=(0.5, -0.09),
               ncol=3, frameon=False, fontsize=7, labelcolor=INK)
