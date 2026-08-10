@@ -553,13 +553,13 @@ let EVIDENCE_FILES = [];
    engine wrote this run, with its real explanations and evidence row refs. */
 let DECISION_TRACE = [];
 
-const MOCK_REPORTS = [
-  { id: 'RPT-00412', title: 'ENT-0037 Forensic Report', case: 'CASE-2026-00412', created: '23 Jul 2026', status: 'SEALED', tier: 'CRITICAL' },
-  { id: 'RPT-00389', title: 'ENT-0041 Forensic Report', case: 'CASE-2026-00321', created: '23 Jul 2026', status: 'SEALED', tier: 'HIGH' },
-  { id: 'RPT-00371', title: 'ENT-0042 Forensic Report', case: 'CASE-2026-00371', created: '23 Jul 2026', status: 'SEALED', tier: 'HIGH' },
-  { id: 'RPT-00344', title: 'ENT-0044 Forensic Report', case: 'CASE-2026-00344', created: '23 Jul 2026', status: 'READY', tier: 'HIGH' },
-  { id: 'RPT-00298', title: 'ENT-0045 Forensic Report', case: 'CASE-2026-00298', created: '22 Jul 2026', status: 'READY', tier: 'HIGH' },
-];
+/* One entry per entity the engine actually escalated to HIGH/CRITICAL — the exact
+   set the backend will build a report for. This replaced a hardcoded list whose
+   case numbers, "23 Jul 2026" dates and "SEALED" statuses were all invented, whose
+   tiers contradicted the engine (it called ENT-0042 HIGH; it is CRITICAL), and
+   whose download links pointed at "ENT-0..." ids that 404 against an API keyed on
+   "ENT_0...". Populated by fetchRealResults(). */
+let REPORTS = [];
 
 /* Pipeline Activity is derived from the current run (see buildActivityFeed).
    It used to be a hardcoded list that announced a CRITICAL entity and rule
