@@ -306,7 +306,8 @@ STR_DEFAULT_CATEGORY = ("Other Suspicious Activity",
 
 
 def generate_str_report(entity_id, entity_data, risk_data, all_events_df,
-                         reporting_entity=None, reporting_officer=None):
+                         reporting_entity=None, reporting_officer=None,
+                         timeline_png=None):
     """
     Generate a Suspicious Transaction Report (STR) formatted per FIU-IND
     (Financial Intelligence Unit - India) conventions, distinct from the
