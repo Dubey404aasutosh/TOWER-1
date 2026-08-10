@@ -418,6 +418,29 @@ These are requirement lines currently scoring near zero. Backend and frontend tr
     are entities), and "Critical Only" is meaningless in the identity view (its nodes are raw
     identifiers with no tier). Give each view its own filter set, or the buttons will lie.
   - 🏆 Earns: FR-IV.b — currently your lowest-scoring line.
+  - **✅ Shipped. Every control filters on a field the backend actually emits** — nothing here is
+    decorative, and a control is not rendered at all when its facet is empty for the active graph.
+  - **Two of the three named filters had nothing to filter on, so the payload was extended first.**
+    Money-flow edges are aggregates and carried no time at all, and entity nodes carried no
+    location — an "amount, *time window*, *location*" filter over those fields would have been a
+    UI with no data behind it. `build_network_graph` now records `first_ts`/`last_ts` per edge
+    (**617 of 617 edges carry a span**) and resolves each entity's cities, reconciling the two
+    sources that record place differently: CDR gives a tower id (`SRT-T05`), IPDR gives a city
+    name (`Chennai`). `/api/results` publishes a `facets` block — real amount range
+    (**₹113–₹300,000**), real time range (**2025-05-01 → 2025-06-14**), the cities and rules
+    actually present — and the controls are built from it.
+  - **Per-view filter sets, so the buttons cannot lie.** The four hardcoded buttons are gone;
+    each graph renders its own. Money-flow gets tier / rule / amount / date-range / city;
+    identity gets the identifier types actually present (`Account`, `Imei`, `Ip`, `Phone`, `Vpa`)
+    and **none** of the money-only controls. Filters reset on a view switch, since a tier filter
+    left over from money-flow would silently blank the identity graph.
+  - `#network-risk-filter` was wired to an element that did not exist in `dashboard.html`; it is
+    now built rather than merely wired. Search subsets on entity id, name, phones and accounts,
+    and keeps the hit's **direct counterparties** so a match is not left as one stranded dot.
+  - An edge-level filter also hides nodes left with no visible edge — "Layering chain" showed
+    154 nodes and 4 edges before that, which buried the answer in stranded dots. Verified live:
+    tier=CRITICAL → **5 nodes**, rule=LAY-1 → **3 nodes**, "Layering chain" → **4 nodes / 4 edges**,
+    amount ≥₹1,00,200 → **165 of 617 edges**, city=Chennai → **1 node**, identity "Phone" → 47 nodes.
 
 - [ ] **S2.3 — Drill-down to evidence (endpoint already exists)** ⏱ ~1h *(was 2h — Day 1 did part of it)*
   - `/api/entity/{id}/trace` (now **`backend/main.py:756`**) returns identifiers + real
