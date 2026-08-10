@@ -1445,7 +1445,11 @@ async function fetchRealResults() {
       });
       populatePOI();
     }
-    if (data.network) initNetworkWithData(data.network);
+    /* Cache both graphs, but do NOT build the vis.Network here. This runs while the
+       dashboard view is showing, so the network container is display:none — vis.js
+       would measure it as zero-height and render a canvas nobody can see. The graph
+       is built by initNetwork() when its view actually becomes visible. */
+    if (data.network_views) networkViews = data.network_views;
   } catch (e) { console.warn("fetchRealResults err:", e); }
 }
 
@@ -1658,10 +1662,19 @@ const NETWORK_VIEW_META = {
 function initNetwork() {
   const container = document.getElementById('identity-network');
   if (!container) return;
-  if (appState.networkInstance) return; // already initialized
+
+  // Already built and the graphs are cached — just make sure vis.js re-measures the
+  // container, which was hidden while another view was active.
+  if (appState.networkInstance && networkViews) {
+    appState.networkInstance.redraw();
+    appState.networkInstance.fit();
+    return;
+  }
+
+  if (networkViews) { setNetworkView(activeNetworkView); return; }
 
   // Try real data first
-  fetch(`${API_BASE}/api/results`, { signal: AbortSignal.timeout(5000) })
+  fetch(`${API_BASE}/api/results`, { signal: AbortSignal.timeout(8000) })
     .then(r => r.json())
     .then(data => {
       if (data.network_views) {
