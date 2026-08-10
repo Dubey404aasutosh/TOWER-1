@@ -442,7 +442,7 @@ These are requirement lines currently scoring near zero. Backend and frontend tr
     tier=CRITICAL → **5 nodes**, rule=LAY-1 → **3 nodes**, "Layering chain" → **4 nodes / 4 edges**,
     amount ≥₹1,00,200 → **165 of 617 edges**, city=Chennai → **1 node**, identity "Phone" → 47 nodes.
 
-- [ ] **S2.3 — Drill-down to evidence (endpoint already exists)** ⏱ ~1h *(was 2h — Day 1 did part of it)*
+- [x] **S2.3 — Drill-down to evidence (endpoint already exists)** ⏱ ~1h *(was 2h — Day 1 did part of it)*
   - `/api/entity/{id}/trace` (now **`backend/main.py:756`**) returns identifiers + real
     `decision_trace` entries + raw evidence rows, and is still called from **nowhere** in the
     frontend (`grep 'api/entity' frontend/app.js` → no hits).
