@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import math
 import hashlib
 import logging
 from datetime import datetime
@@ -62,10 +63,253 @@ def clear_old_reports():
                 f.unlink()
 
 
+# ---- Network serialisation ---------------------------------------------------
+# Two genuinely different graphs come out of the pipeline and both are worth
+# showing, so both are served and the UI toggles between them:
+#
+#   money_flow  — results["network_graph"]. Nodes are RESOLVED ENTITIES, edges are
+#                 actual value movement (transfers, weighted by amount) and contact
+#                 (calls, weighted by frequency). This is the graph the problem
+#                 statement asks for and the one that shows a layering chain.
+#   identity    — results["identity_graph"]. Nodes are RAW IDENTIFIERS (a phone, an
+#                 account, an IMEI) and edges are KYC ownership links. It answers
+#                 "these five identifiers are one person" — a different question,
+#                 and no money flows along any of its edges.
+#
+# /api/results used to serialise the identity graph under the name "network", which
+# is why the money-flow view was missing despite being fully built.
+
+TIER_NODE_SIZE = {"CRITICAL": 30, "HIGH": 24, "MEDIUM": 18, "LOW": 11}
+
+
+def _fmt_inr(amount):
+    """Format a rupee amount for a tooltip (Indian grouping is not worth the noise here)."""
+    try:
+        return f"₹{float(amount):,.0f}"
+    except (TypeError, ValueError):
+        return "₹0"
+
+
+def serialize_money_flow_graph(network_graph, scored_entities, entities, max_nodes=600):
+    """
+    Serialise the money-flow DiGraph into vis.js nodes/edges.
+
+    Only entities that actually participate in the flow are emitted: anything with
+    at least one edge, plus every MEDIUM+ entity. The rest are passthrough
+    identifiers with no edges — drawing them produces a field of isolated dots that
+    hides the structure instead of showing it.
+
+    Edges are classified so the UI can colour them:
+      layering    — both endpoints fired LAY-1: a hop on a detected laundering chain
+      smoking_gun — an endpoint fired TCS-1/TCS-2, i.e. the transfer sits inside a
+                    correlated call/session window (correlation.md calls these the
+                    decisive edges)
+      transaction — ordinary value movement
+      call        — contact only, no money
+    """
+    meta = {
+        "kind": "money_flow",
+        "total_nodes": 0, "total_edges": 0,
+        "rendered_nodes": 0, "rendered_edges": 0,
+        "hidden_isolated_nodes": 0, "truncated": False,
+        "transaction_edges": 0, "call_edges": 0,
+        "layering_edges": 0, "smoking_gun_edges": 0,
+        "total_value": 0.0,
+    }
+    if network_graph is None or network_graph.number_of_nodes() == 0:
+        return {"nodes": [], "edges": [], "meta": meta}
+
+    meta["total_nodes"] = network_graph.number_of_nodes()
+    meta["total_edges"] = network_graph.number_of_edges()
+
+    def tier_of(eid):
+        return scored_entities.get(eid, {}).get("risk_tier", "LOW")
+
+    def rules_of(eid):
+        return scored_entities.get(eid, {}).get("rules_fired", []) or []
+
+    tier_rank = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+
+    # Which nodes are worth drawing
+    connected = {n for n in network_graph.nodes() if network_graph.degree(n) > 0}
+    flagged = {n for n in network_graph.nodes() if tier_of(n) in ("CRITICAL", "HIGH", "MEDIUM")}
+    visible = connected | flagged
+    meta["hidden_isolated_nodes"] = network_graph.number_of_nodes() - len(visible)
+
+    # Guard against a pathological upload: keep the most interesting nodes.
+    if len(visible) > max_nodes:
+        ranked = sorted(
+            visible,
+            key=lambda n: (tier_rank.get(tier_of(n), 3), -network_graph.degree(n)),
+        )
+        visible = set(ranked[:max_nodes])
+        meta["truncated"] = True
+
+    nodes = []
+    for eid in visible:
+        tier = tier_of(eid)
+        rules = rules_of(eid)
+        ndata = network_graph.nodes[eid]
+        edata = entities.get(eid, {})
+
+        value_out = sum(
+            d.get("weight", 0) for _, _, d in network_graph.out_edges(eid, data=True)
+            if d.get("edge_type") == "transaction"
+        )
+        value_in = sum(
+            d.get("weight", 0) for _, _, d in network_graph.in_edges(eid, data=True)
+            if d.get("edge_type") == "transaction"
+        )
+
+        title = [f"{eid} — {tier}"]
+        if edata.get("name"):
+            title.insert(0, str(edata["name"]))
+        if rules:
+            title.append("Rules: " + ", ".join(rules))
+        if scored_entities.get(eid, {}).get("ml_anomaly"):
+            title.append("ML anomaly flagged")
+        title.append(f"In: {_fmt_inr(value_in)} · Out: {_fmt_inr(value_out)}")
+        if ndata.get("institution"):
+            title.append(f"Institution: {ndata['institution']}")
+        for label, key in (("Phones", "phones"), ("Accounts", "accounts")):
+            vals = edata.get(key) or []
+            if vals:
+                title.append(f"{label}: {', '.join(str(v) for v in vals[:3])}")
+
+        nodes.append({
+            "id": eid,
+            "label": eid.replace("ENT_", "E"),
+            "group": tier.lower(),
+            "shape": "dot",
+            "size": TIER_NODE_SIZE.get(tier, 11),
+            "title": "\n".join(title),
+            "entity_id": eid,
+            "name": edata.get("name", ""),
+            "risk_tier": tier,
+            "rules_fired": rules,
+            "ml_anomaly": bool(scored_entities.get(eid, {}).get("ml_anomaly")),
+            "institution": ndata.get("institution", "Unknown"),
+            "value_in": float(value_in),
+            "value_out": float(value_out),
+            "font": {"color": "#F2F3F4", "size": 11},
+        })
+
+    edges = []
+    for u, v, data in network_graph.edges(data=True):
+        if u not in visible or v not in visible:
+            continue
+
+        edge_type = data.get("edge_type", "transaction")
+        weight = float(data.get("weight", 0) or 0)
+        count = int(data.get("count", 1) or 1)
+
+        u_rules, v_rules = rules_of(u), rules_of(v)
+        is_layering = "LAY-1" in u_rules and "LAY-1" in v_rules
+        is_smoking_gun = any(r in u_rules + v_rules for r in ("TCS-1", "TCS-2"))
+
+        if edge_type == "transaction":
+            meta["transaction_edges"] += 1
+            meta["total_value"] += weight
+            # Width by amount, log-compressed: a 100x range of transfer sizes has to
+            # fit in a ~6px range of stroke widths.
+            width = 1.4 + min(math.log10(max(weight, 1)) / 1.3, 5.0)
+            title = f"{u} → {v}\n{_fmt_inr(weight)} across {count} transfer(s)"
+        else:
+            meta["call_edges"] += 1
+            freq = int(data.get("call_frequency", count) or 1)
+            width = 1.0 + min(freq * 0.25, 2.5)
+            title = f"{u} → {v}\n{freq} call(s) / SMS"
+
+        if is_layering:
+            meta["layering_edges"] += 1
+            edge_class = "layering"
+            color = {"color": "#FF4D4D", "highlight": "#FF7A7A", "opacity": 0.95}
+            width = max(width, 4.0)
+            title += "\nLAY-1 — hop on a detected layering chain"
+        elif is_smoking_gun and edge_type == "transaction":
+            meta["smoking_gun_edges"] += 1
+            edge_class = "smoking_gun"
+            color = {"color": "#FFB020", "highlight": "#FFC961", "opacity": 0.9}
+            width = max(width, 2.6)
+            title += "\nTCS — transfer inside a correlated call/session window"
+        elif edge_type == "transaction":
+            edge_class = "transaction"
+            color = {"color": "rgba(61,124,255,0.55)", "highlight": "#3D7CFF"}
+        else:
+            edge_class = "call"
+            color = {"color": "rgba(155,161,168,0.35)", "highlight": "#9BA1A8"}
+
+        edges.append({
+            "id": f"{u}__{v}",
+            "from": u,
+            "to": v,
+            "title": title,
+            "width": round(width, 2),
+            "color": color,
+            "dashes": edge_type != "transaction",
+            "arrows": {"to": {"enabled": True, "scaleFactor": 0.55}},
+            "edge_type": edge_type,
+            "edge_class": edge_class,
+            "amount": weight if edge_type == "transaction" else 0.0,
+            "count": count,
+        })
+
+    meta["rendered_nodes"] = len(nodes)
+    meta["rendered_edges"] = len(edges)
+    return {"nodes": nodes, "edges": edges, "meta": meta}
+
+
+def serialize_identity_graph(identity_graph, id_types, entity_map, scored_entities, network_graph):
+    """
+    Serialise the identity graph: raw identifiers linked by KYC ownership.
+
+    This is the "these five identifiers are one person" view. It is deliberately
+    kept — it is a real second story — but it is not the money-flow graph.
+    """
+    nodes, edges = [], []
+    meta = {"kind": "identity", "total_nodes": 0, "total_edges": 0,
+            "rendered_nodes": 0, "rendered_edges": 0}
+    if identity_graph is None:
+        return {"nodes": nodes, "edges": edges, "meta": meta}
+
+    meta["total_nodes"] = identity_graph.number_of_nodes()
+    meta["total_edges"] = identity_graph.number_of_edges()
+
+    for node in identity_graph.nodes():
+        node_type = id_types.get(node, "unknown")
+        entity_id = entity_map.get(node, "unresolved")
+        risk_tier = scored_entities.get(entity_id, {}).get("risk_tier", "LOW")
+
+        node_inst = "Unknown"
+        if network_graph is not None and network_graph.has_node(entity_id):
+            node_inst = network_graph.nodes[entity_id].get("institution", "Unknown")
+
+        nodes.append({
+            "id": node,
+            "label": f"{node}\n({node_type})",
+            "group": node_type,
+            "entity_id": entity_id,
+            "risk_tier": risk_tier,
+            "institution": node_inst,
+        })
+
+    for u, v, data in identity_graph.edges(data=True):
+        edges.append({
+            "from": u,
+            "to": v,
+            "label": data.get("source", ""),
+            "title": f"Link source: {data.get('source', 'unknown')}",
+        })
+
+    meta["rendered_nodes"] = len(nodes)
+    meta["rendered_edges"] = len(edges)
+    return {"nodes": nodes, "edges": edges, "meta": meta}
+
+
 def clean_serializable(obj):
     """Recursively clean objects to make them JSON serializable."""
     import numpy as np
-    
+
     if isinstance(obj, dict):
         return {str(k): clean_serializable(v) for k, v in obj.items()}
     elif isinstance(obj, (list, tuple, set)):
@@ -360,41 +604,19 @@ def get_results():
             })
 
             
-    # 3. Vis.js Network Data (Concentric Radial Layout mapping)
-    network_nodes = []
-    network_edges = []
+    # 3. Vis.js Network Data — money-flow graph (default) + identity graph (toggle)
     identity_graph = results.get("identity_graph")
     network_graph = results.get("network_graph")
-    
-    if identity_graph is not None:
-        id_types = results.get("id_types", {})
-        # Map node categories
-        for node in identity_graph.nodes():
-            node_type = id_types.get(node, "unknown")
-            entity_id = results.get("entity_map", {}).get(node, "unresolved")
-            risk_tier = scored_entities.get(entity_id, {}).get("risk_tier", "LOW")
-            
-            node_inst = "Unknown"
-            if network_graph is not None and network_graph.has_node(entity_id):
-                node_inst = network_graph.nodes[entity_id].get("institution", "Unknown")
-            
-            network_nodes.append({
-                "id": node,
-                "label": f"{node}\n({node_type})",
-                "group": node_type,
-                "entity_id": entity_id,
-                "risk_tier": risk_tier,
-                "institution": node_inst
-            })
-            
-        for u, v, data in identity_graph.edges(data=True):
-            network_edges.append({
-                "from": u,
-                "to": v,
-                "label": data.get("source", ""),
-                "title": f"Link source: {data.get('source', 'unknown')}"
-            })
-            
+
+    money_flow_view = serialize_money_flow_graph(network_graph, scored_entities, entities)
+    identity_view = serialize_identity_graph(
+        identity_graph,
+        results.get("id_types", {}),
+        results.get("entity_map", {}),
+        scored_entities,
+        network_graph,
+    )
+
     kyc_anchored = sum(1 for e in entities.values() if len(e.get("phones", [])) + len(e.get("accounts", [])) + len(e.get("imeis", [])) + len(e.get("vpas", [])) > 1)
     unmapped_passthrough = len(entities) - kyc_anchored
 
@@ -417,9 +639,11 @@ def get_results():
         "rule_firings": rule_firings,
         "suspects": clean_serializable(suspects_list),
         "map_towers": towers_map,
-        "network": {
-            "nodes": clean_serializable(network_nodes),
-            "edges": clean_serializable(network_edges)
+        # "network" is the default view and is now the MONEY-FLOW graph.
+        "network": clean_serializable(money_flow_view),
+        "network_views": {
+            "money_flow": clean_serializable(money_flow_view),
+            "identity": clean_serializable(identity_view),
         },
         "verification": clean_serializable(results.get("verification", {}))
     })
