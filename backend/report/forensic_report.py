@@ -24,8 +24,30 @@ REPORT_DIR = Path(__file__).resolve().parent.parent / "reports"
 REPORT_DIR.mkdir(exist_ok=True)
 
 
+def _resolve_png(source, width=750, height=450):
+    """
+    Accept either ready-made PNG bytes or a Plotly figure and return PNG bytes.
+
+    The report path supplies bytes rendered by `report_charts` (matplotlib, ~0.1 s).
+    A Plotly figure is still honoured for callers that want kaleido — it just costs
+    ~3.5 s per image, which is why it is not what the pipeline passes.
+    Returns None if nothing renders, so the caller can print an honest placeholder
+    instead of an empty frame.
+    """
+    if source is None:
+        return None
+    if isinstance(source, (bytes, bytearray)):
+        return bytes(source) or None
+    try:
+        return source.to_image(format="png", width=width, height=height, scale=1)
+    except Exception as e:
+        print(f"  [chart] figure could not be rasterised: {type(e).__name__}: {e}")
+        return None
+
+
 def generate_forensic_report(entity_id, entity_data, risk_data, all_events_df,
-                              timeline_fig=None, network_fig=None):
+                              timeline_fig=None, network_fig=None,
+                              timeline_png=None, network_png=None):
     """
     Generate a Word forensic report for a flagged entity.
 
@@ -34,8 +56,10 @@ def generate_forensic_report(entity_id, entity_data, risk_data, all_events_df,
         entity_data: Dict with phones, accounts, imeis, vpas
         risk_data: Dict with risk_tier, rules_fired, explanations, evidence, ml_anomaly
         all_events_df: DataFrame of all events
-        timeline_fig: Plotly figure for timeline (optional)
-        network_fig: Plotly figure for network graph (optional)
+        timeline_fig: Plotly figure for the timeline (optional, rendered via kaleido)
+        network_fig: Plotly figure for the network graph (optional, via kaleido)
+        timeline_png: pre-rendered timeline PNG bytes (preferred — see report_charts)
+        network_png: pre-rendered money-flow PNG bytes (preferred)
 
     Returns:
         Path to generated report file
