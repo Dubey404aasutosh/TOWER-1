@@ -90,6 +90,18 @@ def _fmt_inr(amount):
         return "₹0"
 
 
+def _iso_or_none(value):
+    """ISO-8601 string for a timestamp, or None when it is missing/NaT."""
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+        return pd.Timestamp(value).isoformat()
+    except (TypeError, ValueError):
+        return None
+
+
 def serialize_money_flow_graph(network_graph, scored_entities, entities, max_nodes=600):
     """
     Serialise the money-flow DiGraph into vis.js nodes/edges.
