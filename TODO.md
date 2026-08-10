@@ -147,8 +147,20 @@ Restores advertised functionality. Every item is a defect fix, not a feature.
   - Cap DFS depth (currently unbounded → worst-case exponential).
   - **Either implement a real cycle check or fix the explanation string** — the emitted text claims *"Commission skim pattern confirmed"* and the docstring claims *"forming a cycle or near-cycle"*, but `if cp_entity in path: continue` makes a cycle structurally unreachable. Do not ship an explanation that asserts something never verified.
   - ✅ *Done when:* LAY-1 fires on E042 (the planted layering entity) and on ≤3 clean entities.
+  - **✅ Shipped — and the cycle check is real now, not a claim.** Constants are named and
+    documented at the top of the rule: `LAY1_MIN_AMOUNT = ₹50,000` (the reporting threshold the
+    layering evades — kills the ₹1,417 and ₹8,047 chains), skim band narrowed `0.60–0.99` →
+    **3–20%** around the documented 5–15%, and `LAY1_MAX_DEPTH = 6` bounds the DFS.
+    Rather than soften the explanation, the **cycle is now detected**: a hop back to the
+    entity the chain started from closes the loop and is ranked above a longer open chain.
+    E042's chain is genuinely circular —
+    `ENT_0042 → ENT_0014 → ENT_0007 → ENT_0021 → ENT_0042`, 8.2h, **measured** skims
+    7.9% / 10.1% / 12.0%. The explanation now reports those measured values and says
+    *"no return to X observed"* when the chain does not close. The rule's own unit-test
+    fixture was itself a cycle (`A→B→C→A`) the old code could not see.
+    **Result: 3 firings** (E042 + the 2 planted intermediaries), well inside the ≤3 budget.
 
-- [ ] **S1.3 — Stop the PDF parser silently losing 16% of bank rows** ⏱ 2h 🔴
+- [x] **S1.3 — Stop the PDF parser silently losing 16% of bank rows** ⏱ 2h 🔴
   - `backend/ingestion/bank_parser.py:187-189` skips the first row of **every** page as a "repeated header" — but reportlab writes no repeated header. **8 transactions deleted outright.**
   - `backend/data/generator/generate_all.py:1054`: `colWidths=[25,55,45,180,50,30,55]` (440pt) is too narrow for A4 (~510pt) → cells shear. Dates extract as `'0/06/25 21:53:4'`, `'1/05/25 20:17:5'`; descriptions carry column bleed (`...advay.contr\n4actor@okicici`). **24 more rows die on date parse.**
   - Fix: remove the page-skip · widen `colWidths` · add `repeatRows=1` · then handle the (now real) repeated header.
@@ -156,8 +168,27 @@ Restores advertised functionality. Every item is a defect fix, not a feature.
   - 📊 **Measured:** 208 data rows → 175 parsed (**15.9% lost**), including the entire planted ₹5,00,000 mule inflow for account `8644925192`. **This — not the rule logic — is why MUL-1 misses E043.**
   - ✅ *Done when:* `bank_icici.pdf` yields ≥205 events **and** the pipeline prints any non-zero skip count.
   - 🏆 Earns: evaluation criterion #1 (parsing accuracy) + likely recovers a full recall point.
+  - **✅ Shipped — 175 → 207 of 208 rows (99.5%), and the 1 loss is reported with a cause.**
+    Parser: the blind "skip row 0 of every page" is replaced by `_looks_like_repeated_header()`,
+    which matches the row's *text* against the header — so a transaction sitting first on a page
+    is never deleted, whether or not the header repeats.
+    Generator: `colWidths` widened and padding set explicitly. The Date column was 45pt for a
+    timestamp that measures ~56pt at 7pt Helvetica, so reportlab drew it past the cell border and
+    extraction read back the clipped remains (`'0/06/25 21:53:4'`). Every description is now a
+    wrapped `Paragraph`, and `repeatRows=1` draws a real repeated header.
+    *Verified by re-extraction:* header reads cleanly as
+    `['S.No','Account No','Date','Description','Amount','Type (DR/CR)','Bal.']` (the old
+    `'pe ('` / `'r)'` shear artifacts are gone), 9 pages, **zero malformed dates**.
+    Accounting: `parse_bank_pdf(stats=...)` and `_parse_bank_df` count every drop by reason;
+    `smart_ingest.py` returns the real number instead of the hardcoded `0`. The single skip is
+    the generator's *deliberately* injected blank-amount row.
+    **The recovered ₹5,00,000 mule inflow makes MUL-1 detect E043 — recall 80% → 100%.**
+    New `backend/tests/test_ingestion.py` asserts the invariant `parsed + skipped == total`.
+  - ⚠️ *Regenerating the dataset is safe:* the generator is seeded (`random.seed(42)`), and a
+    regeneration before any change reproduced byte-identical CSV/XLSX and identical pipeline
+    output — only `generated_at` and the PDF layout move.
 
-- [ ] **S1.4 — Render the money-flow graph (it's built, just never sent)** ⏱ 2h 🔴
+- [x] **S1.4 — Render the money-flow graph (it's built, just never sent)** ⏱ 2h 🔴
   - `build_network_graph` produces a DiGraph with **613 weighted transaction + call edges**. `backend/main.py:271-298` serializes the **identity graph** instead — KYC ownership links between raw identifiers, with ~1,476 isolated dots and **zero money flow**.
   - Swap the serialization to `results["network_graph"]`: nodes = entities (size/colour by tier), edges = txn (width by amount) + call (width by frequency), arrows on.
   - Highlight edges where **TCS-1/TCS-2** fired — `correlation.md:114` calls these the "smoking gun" edges.
