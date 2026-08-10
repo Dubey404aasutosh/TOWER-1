@@ -1918,6 +1918,127 @@ function applyNetworkFilter(type, btn) {
 
 function applyNetworkFilters() { }
 
+/* ── EVIDENCE DRILL-DOWN (S2.3) ───────────────────────────────────────
+   "Why this score?" answered with the source rows, not a paragraph.
+   /api/entity/{id}/trace returns each rule's explanation, its evidence tokens and
+   the raw event rows behind them. The endpoint has existed since day one and was
+   called from nowhere; this is the click-through that uses it. */
+
+const TRACE_CACHE = new Map();
+let inspectorRequestId = 0;
+
+/* Evidence tokens come in two shapes. A source reference — "row_219",
+   "bank_row_219", "cdr_row_1018" — points at a line in an ingested file and is
+   what an investigator needs to verify the claim. Everything else
+   ("skim_pct:12.0", "chain:A>B>C") is structured metadata about the finding. */
+const ROW_TOKEN_RE = /^(?:([a-z]+)_)?row_(.+)$/i;
+
+function parseEvidenceToken(token) {
+  const text = String(token);
+  const m = text.match(ROW_TOKEN_RE);
+  if (m) {
+    // A row number is an integer; strip any float tail a pandas join introduced.
+    const ref = m[2].replace(/\.0$/, '');
+    return { kind: 'row', source: m[1] || null, ref, raw: text };
+  }
+  const idx = text.indexOf(':');
+  if (idx > 0) return { kind: 'meta', key: text.slice(0, idx), value: text.slice(idx + 1), raw: text };
+  return { kind: 'meta', key: null, value: text, raw: text };
+}
+
+async function fetchEntityTrace(entityId) {
+  if (TRACE_CACHE.has(entityId)) return TRACE_CACHE.get(entityId);
+  const res = await fetch(`${API_BASE}/api/entity/${encodeURIComponent(entityId)}/trace`,
+    { signal: AbortSignal.timeout(8000) });
+  if (!res.ok) throw new Error(`trace ${res.status}`);
+  const data = await res.json();
+  TRACE_CACHE.set(entityId, data);
+  return data;
+}
+
+async function loadInspectorEvidence(entityId) {
+  // Clicking through nodes quickly must not let a slow earlier response paint
+  // one entity's evidence under another entity's heading.
+  const requestId = ++inspectorRequestId;
+  try {
+    const trace = await fetchEntityTrace(entityId);
+    if (requestId !== inspectorRequestId) return;
+    renderInspectorEvidence(trace);
+  } catch (e) {
+    if (requestId !== inspectorRequestId) return;
+    const host = document.getElementById('inspector-evidence');
+    if (host) {
+      host.innerHTML = `<div style="font-size:11px;color:var(--text-muted);">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        Evidence rows unavailable (${escapeHTML(String(e.message || e))}).</div>`;
+    }
+  }
+}
+
+function renderInspectorEvidence(trace) {
+  const host = document.getElementById('inspector-evidence');
+  if (!host) return;
+
+  const rules = trace.rules_fired || [];
+  if (!rules.length) { host.innerHTML = ''; return; }
+
+  // Index the entity's raw rows so an evidence token can be resolved to the
+  // actual line it cites.
+  const rowsByRef = new Map();
+  (trace.raw_events || []).forEach(ev => {
+    if (ev.raw_row_ref != null) rowsByRef.set(String(ev.raw_row_ref), ev);
+  });
+
+  const inr = v => '₹' + Math.abs(Number(v) || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+
+  const blocks = rules.map(ruleId => {
+    const explanation = (trace.explanations || {})[ruleId] || '';
+    const tokens = ((trace.evidence || {})[ruleId] || []).map(parseEvidenceToken);
+    const rowTokens = tokens.filter(t => t.kind === 'row');
+    const metaTokens = tokens.filter(t => t.kind === 'meta' && t.key &&
+      !['severity', 'limbs', 'sub_level'].includes(t.key));
+
+    const rowsHtml = rowTokens.length ? rowTokens.map(t => {
+      const ev = rowsByRef.get(t.ref);
+      const label = `${t.source ? t.source + ' ' : ''}row ${t.ref}`;
+      if (!ev) {
+        // The row belongs to a counterparty's file, not this entity's slice.
+        return `<div class="ev-row"><span class="ev-row-ref">${escapeHTML(label)}</span>
+                  <span class="ev-row-detail">referenced — not in this entity's rows</span></div>`;
+      }
+      const when = (ev.timestamp || '').slice(0, 19).replace('T', ' ');
+      const bits = [when, ev.event_type];
+      if (ev.amount) bits.push(`${(ev.direction === 'credit' || ev.amount > 0) ? '+' : '−'}${inr(ev.amount)}`);
+      if (ev.counterparty) bits.push(`→ ${ev.counterparty}`);
+      if (ev.location) bits.push(ev.location);
+      return `<div class="ev-row">
+                <span class="ev-row-ref" title="${escapeAttr(ev.source_file || '')}">${escapeHTML(label)}</span>
+                <span class="ev-row-detail">${escapeHTML(bits.filter(Boolean).join(' · '))}</span>
+              </div>`;
+    }).join('') : `<div class="ev-row"><span class="ev-row-detail">No source row cited by this rule.</span></div>`;
+
+    return `
+      <div class="ev-rule-block">
+        <div class="ev-rule-head">
+          <span class="rule-chip">${escapeHTML(ruleId)}</span>
+          ${metaTokens.map(t => `<span class="ev-meta" title="${escapeAttr(t.raw)}">${escapeHTML(t.key)}: ${escapeHTML(t.value)}</span>`).join('')}
+        </div>
+        ${explanation ? `<div class="ev-rule-expl">${escapeHTML(explanation)}</div>` : ''}
+        <div class="ev-rows">${rowsHtml}</div>
+      </div>`;
+  }).join('');
+
+  host.innerHTML = `
+    <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:6px;">
+      Evidence — source rows behind each firing
+    </div>
+    ${blocks}
+    <a class="btn btn-ghost btn-sm" style="margin-top:8px;width:100%;justify-content:center;"
+       href="${API_BASE}/api/download-report/${encodeURIComponent(trace.entity_id)}">
+      <i class="fa-solid fa-file-word"></i> Full forensic report
+    </a>`;
+}
+
 function populateInspector(node) {
   const body = document.getElementById('inspector-body');
   if (!body) return;
