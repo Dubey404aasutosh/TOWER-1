@@ -255,9 +255,11 @@ def render_timeline_png(payload, title=None, width_in=7.4, height_in=3.1):
                    markeredgewidth=1.4, markersize=6, label="Cited as evidence")
         )
     if legend_items:
-        ax.legend(handles=legend_items, loc="upper left", bbox_to_anchor=(0, -0.30),
-                  ncol=3, frameon=False, fontsize=7.2, handletextpad=0.4,
-                  columnspacing=1.3, labelcolor=INK)
+        axis_for_legend.legend(
+            handles=legend_items, loc="upper left", bbox_to_anchor=(0, -0.34),
+            ncol=3, frameon=False, fontsize=7.2, handletextpad=0.4,
+            columnspacing=1.3, labelcolor=INK,
+        )
 
     if title:
         ax.set_title(title, fontsize=9.5, color=INK, pad=8, loc="left")
