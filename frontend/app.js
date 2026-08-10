@@ -933,7 +933,7 @@ function populateEvidence() {
         const rows = e.rows_parsed != null
           ? `${Number(e.rows_parsed).toLocaleString()} rows parsed` +
             (e.rows_skipped ? ` · <span style="color:var(--orange);">${Number(e.rows_skipped).toLocaleString()} skipped</span>` : '')
-          : 'not yet ingested';
+          : (e.status === 'REFERENCE' ? 'reference input · used by entity resolution' : 'not yet ingested');
         const digest = e.sha256
           ? `<div class="ev-hash" title="SHA-256 (hashlib): ${e.sha256}">SHA-256: ${e.sha256.slice(0, 24)}…</div>`
           : `<div class="ev-hash" title="Digest unavailable">SHA-256: unavailable</div>`;
@@ -941,7 +941,9 @@ function populateEvidence() {
           ? `<span class="tag tag-orange" style="flex-shrink:0;" title="File on disk no longer matches the digest recorded at ingest"><i class="fa-solid fa-triangle-exclamation"></i> CHANGED</span>`
           : (e.status === 'PARSED'
               ? `<span class="tag tag-green" style="flex-shrink:0;"><i class="fa-solid fa-check"></i> HASHED</span>`
-              : `<span class="tag tag-orange" style="flex-shrink:0;">${e.status || 'PENDING'}</span>`);
+              : e.status === 'REFERENCE'
+                ? `<span class="tag" style="flex-shrink:0;opacity:0.75;"><i class="fa-solid fa-book"></i> REFERENCE</span>`
+                : `<span class="tag tag-orange" style="flex-shrink:0;">${e.status || 'PENDING'}</span>`);
         return `
       <div class="evidence-item">
         <div class="ev-icon ${ext}">

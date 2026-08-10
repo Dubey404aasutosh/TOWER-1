@@ -209,6 +209,15 @@ def get_evidence_files():
             current_digest = sha256_file(f)
             ingest_digest = rec.get("sha256")
 
+            if rec:
+                status = rec.get("status")
+            elif f.suffix.lower() == ".json":
+                # KYC / reference maps are consumed by entity resolution, not the
+                # event parser, so they legitimately have no parsed-row count.
+                status = "REFERENCE"
+            else:
+                status = "NOT INGESTED"
+
             files.append({
                 "filename": f.name,
                 "extension": f.suffix.lower().lstrip("."),
@@ -220,7 +229,7 @@ def get_evidence_files():
                 "total_rows": rec.get("total_rows"),
                 "rows_parsed": rec.get("rows_parsed"),
                 "rows_skipped": rec.get("rows_skipped"),
-                "status": rec.get("status") if rec else "NOT INGESTED",
+                "status": status,
                 "error": rec.get("error"),
             })
 
