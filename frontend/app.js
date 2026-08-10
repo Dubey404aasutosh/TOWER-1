@@ -1918,7 +1918,12 @@ function populateInspector(node) {
       <div style="margin-top:10px;font-size:11.5px;color:var(--text-muted);">Rules fired</div>
       <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;">
         ${rules.length
-          ? rules.map(r => `<span class="rule-chip">${escapeHTML(r)}</span>`).join('')
+          ? rules.map(r => {
+              // IDR-1 grades itself HIGH/MEDIUM/LOW and that grade drives the tier,
+              // so show which grade this firing carried.
+              const sev = (node.rule_severities || {})[r];
+              return `<span class="rule-chip" title="${escapeAttr(r + (sev ? ' — severity ' + sev : ''))}">${escapeHTML(r)}${sev ? ` <span style="opacity:.6;font-size:9px;">${escapeHTML(sev)}</span>` : ''}</span>`;
+            }).join('')
           : '<span style="font-size:11.5px;color:var(--text-muted);">None — no rule fired on this entity</span>'}
       </div>
       ${node.ml_anomaly ? '<div style="margin-top:8px;font-size:11.5px;color:var(--accent-warning);"><i class="fa-solid fa-flask"></i> ML anomaly flagged</div>' : ''}

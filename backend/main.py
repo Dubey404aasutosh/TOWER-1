@@ -201,6 +201,7 @@ def serialize_money_flow_graph(network_graph, scored_entities, entities, max_nod
             "name": edata.get("name", ""),
             "risk_tier": tier,
             "rules_fired": rules,
+            "rule_severities": scored_entities.get(eid, {}).get("rule_severities", {}),
             "ml_anomaly": bool(scored_entities.get(eid, {}).get("ml_anomaly")),
             "institution": ndata.get("institution", "Unknown"),
             "value_in": float(value_in),
