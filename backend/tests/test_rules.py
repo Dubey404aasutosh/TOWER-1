@@ -157,8 +157,8 @@ def test_idr1_constant_identifiers_no_fire():
     """IDR-1 does NOT fire when identifier remains constant."""
     t0 = datetime(2025, 5, 1, 10, 0, 0)
     events = [
-        {"entity_id": "ENT_IDR_N", "event_type": "call", "imei": "IMEI_SAME", "b_party": "9800000001", "timestamp": t0, "raw_row_ref": 1},
-        {"entity_id": "ENT_IDR_N", "event_type": "call", "imei": "IMEI_SAME", "b_party": "9800000001", "timestamp": t0 + timedelta(minutes=5), "raw_row_ref": 2},
+        {"entity_id": "ENT_IDR_N", "event_type": "call", "imei": "IMEI_SAME", "entity_ref": "9800000001", "timestamp": t0, "raw_row_ref": 1},
+        {"entity_id": "ENT_IDR_N", "event_type": "call", "imei": "IMEI_SAME", "entity_ref": "9800000001", "timestamp": t0 + timedelta(minutes=5), "raw_row_ref": 2},
     ]
     df = pd.DataFrame(events)
     entity_data = {"phones": ["9800000001"]}
@@ -166,6 +166,119 @@ def test_idr1_constant_identifiers_no_fire():
     fired, exp, ev, severity = check_idr1("ENT_IDR_N", entity_data, df)
     assert fired is False
     assert severity in ["NONE", "LOW"]
+
+
+# --- IDR-1 fan-out: the DOCUMENTED definition -------------------------------
+# correlation.md defines IDR-1 as "one resolved entity linked to 3+ distinct
+# accounts or 2+ IMEIs". The implementation instead looked for an IMEI/IMSI
+# CHANGING over time, so it fired 0x on the whole dataset: the planted fan-out
+# entity holds one IMEI that never changes across three numbers. These tests
+# assert the documented behaviour, and fail if the rule ever drifts back.
+
+def _idr1_fanout_frame(entity_id, imei, msisdns):
+    """CDR rows for one handset operating several numbers."""
+    t0 = datetime(2025, 5, 1, 10, 0, 0)
+    rows = []
+    for i, msisdn in enumerate(msisdns):
+        rows.append({
+            "entity_id": entity_id, "event_type": "call", "imei": imei,
+            "entity_ref": msisdn, "counterparty": "9700000000",
+            "timestamp": t0 + timedelta(hours=i), "raw_row_ref": 100 + i,
+        })
+    return pd.DataFrame(rows)
+
+
+def test_idr1_fires_on_one_handset_operating_several_numbers():
+    """
+    The planted signature: ONE IMEI, THREE MSISDNs, no identifier ever changing.
+    This is the exact shape of E044 and the case the old rule could not see.
+    """
+    df = _idr1_fanout_frame("ENT_FANOUT", "864100000000001",
+                            ["9800000001", "9800000002", "9800000003"])
+    entity_data = {"phones": ["9800000001", "9800000002", "9800000003"],
+                   "imeis": ["864100000000001"], "accounts": []}
+
+    fired, exp, ev, severity = check_idr1("ENT_FANOUT", entity_data, df)
+    assert fired is True, "IDR-1 must fire on one handset operating multiple numbers"
+    assert severity == "HIGH"
+    assert "864100000000001" in exp
+    assert any(t == "limb:device_fanout" for t in ev)
+
+
+def test_idr1_fires_on_three_or_more_accounts():
+    """correlation.md limb: '3+ distinct accounts' on one resolved identity."""
+    entity_data = {"phones": ["9800000009"], "imeis": [],
+                   "accounts": ["ACC_1", "ACC_2", "ACC_3"]}
+    df = pd.DataFrame([{
+        "entity_id": "ENT_ACCTS", "event_type": "transaction", "amount": -1000.0,
+        "entity_ref": "ACC_1", "timestamp": datetime(2025, 5, 1, 10, 0, 0),
+        "raw_row_ref": 1,
+    }])
+
+    fired, exp, ev, severity = check_idr1("ENT_ACCTS", entity_data, df)
+    assert fired is True, "IDR-1 must fire on the documented 3+ accounts limb"
+    assert any(t == "limb:account_fanout" for t in ev)
+
+
+def test_idr1_fires_on_two_or_more_imeis():
+    """correlation.md limb: '2+ IMEIs' on one resolved identity."""
+    entity_data = {"phones": ["9800000010"], "accounts": [],
+                   "imeis": ["864100000000001", "864100000000002"]}
+    df = pd.DataFrame([{
+        "entity_id": "ENT_IMEIS", "event_type": "call", "imei": "864100000000001",
+        "entity_ref": "9800000010", "timestamp": datetime(2025, 5, 1, 10, 0, 0),
+        "raw_row_ref": 1,
+    }])
+
+    fired, exp, ev, severity = check_idr1("ENT_IMEIS", entity_data, df)
+    assert fired is True, "IDR-1 must fire on the documented 2+ IMEIs limb"
+    assert any(t == "limb:device_multiplicity" for t in ev)
+
+
+def test_idr1_does_not_fire_on_an_ordinary_single_identity():
+    """One phone, one handset, two accounts — an ordinary subscriber must stay clean."""
+    df = _idr1_fanout_frame("ENT_NORMAL", "864100000000009", ["9800000011"])
+    entity_data = {"phones": ["9800000011"], "imeis": ["864100000000009"],
+                   "accounts": ["ACC_1", "ACC_2"]}
+
+    fired, exp, ev, severity = check_idr1("ENT_NORMAL", entity_data, df)
+    assert fired is False, "IDR-1 must not fire below every documented threshold"
+
+
+def test_idr1_corroborating_limbs_escalate_severity():
+    """Account fan-out alone is MEDIUM; combined with a second limb it is HIGH."""
+    df = pd.DataFrame([{
+        "entity_id": "ENT_ONE_LIMB", "event_type": "transaction", "amount": -500.0,
+        "entity_ref": "ACC_1", "timestamp": datetime(2025, 5, 1, 10, 0, 0),
+        "raw_row_ref": 1,
+    }])
+    _, _, _, lone = check_idr1(
+        "ENT_ONE_LIMB",
+        {"phones": [], "imeis": [], "accounts": ["ACC_1", "ACC_2", "ACC_3"]}, df)
+    assert lone == "MEDIUM"
+
+    _, _, _, both = check_idr1(
+        "ENT_TWO_LIMBS",
+        {"phones": [], "accounts": ["ACC_1", "ACC_2", "ACC_3"],
+         "imeis": ["864100000000001", "864100000000002"]}, df)
+    assert both == "HIGH", "two independent fan-out limbs must corroborate to HIGH"
+
+
+def test_idr1_fires_at_least_once_on_the_demo_dataset(pipeline_results):
+    """
+    The README advertises seven rules. A rule that never fires on the shipped
+    dataset is a claim the product does not honour — this asserts IDR-1 is not
+    that rule, and by extension that all seven fire.
+    """
+    scored = pipeline_results["scored_entities"]
+    firings = {}
+    for data in scored.values():
+        for rule_id in data.get("rules_fired", []):
+            firings[rule_id] = firings.get(rule_id, 0) + 1
+
+    dead = [r for r in ("IDR-1", "TCS-1", "TCS-2", "STR-1", "LAY-1", "MUL-1", "LOC-1")
+            if firings.get(r, 0) == 0]
+    assert not dead, f"rules advertised but never fired on the demo dataset: {dead}"
 
 
 # ============================================================
