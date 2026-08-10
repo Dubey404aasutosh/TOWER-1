@@ -203,6 +203,8 @@ def build_network_graph(all_events_df, scored_entities, entities):
                 count=('amount_abs', 'size'),
                 source_file=('source_file', 'first'),
                 from_debit=('is_debit', 'any'),
+                first_ts=('timestamp', 'min'),
+                last_ts=('timestamp', 'max'),
             ).reset_index()
 
             for row in agg.itertuples(index=False):
@@ -212,6 +214,7 @@ def build_network_graph(all_events_df, scored_entities, entities):
                            edge_type='transaction',
                            source_file=str(row.source_file),
                            institution=inst,
+                           first_ts=row.first_ts, last_ts=row.last_ts,
                            # False = only the receiving side's statement was ingested,
                            # so this edge is evidenced by the counterparty's record.
                            counted_from_debit=bool(row.from_debit))
