@@ -150,59 +150,119 @@ def parse_bank_csv(filepath):
     return _parse_bank_df(df, str(filepath))
 
 
-def parse_bank_pdf(filepath):
-    """Parse ICICI-style PDF bank statement using pdfplumber."""
+def _looks_like_repeated_header(row, raw_header):
+    """
+    True when `row` is the statement's column header drawn again at the top of a
+    later page (reportlab's repeatRows, and what real bank statements do).
+
+    Checked by comparing the cell text to the header we already read — NOT by
+    position. The previous version skipped the first row of every page outright,
+    which deleted one genuine transaction per page whenever the header was not in
+    fact repeated.
+    """
+    if not raw_header or len(row) != len(raw_header):
+        return False
+    cells = [str(c).strip().lower() if c else "" for c in row]
+    ref = [str(c).strip().lower() for c in raw_header]
+    matches = sum(1 for a, b in zip(cells, ref) if a and a == b)
+    # Half the columns matching the header text is decisive; a transaction row
+    # never repeats the column names.
+    return matches >= max(2, len(ref) // 2)
+
+
+def parse_bank_pdf(filepath, stats=None):
+    """
+    Parse an ICICI-style PDF bank statement using pdfplumber.
+
+    `stats`, if given, is populated with the true row accounting for this file:
+    total_rows / parsed_rows / skipped_rows, plus a per-reason breakdown. Nothing
+    is dropped silently — every row the parser could not turn into an event is
+    counted and reported.
+    """
     events = []
+    if stats is None:
+        stats = {}
+    stats.setdefault("total_rows", 0)
+    stats.setdefault("skipped_rows", 0)
+    stats.setdefault("skip_reasons", {})
+
+    def _skip(reason, n=1):
+        stats["skipped_rows"] += n
+        stats["skip_reasons"][reason] = stats["skip_reasons"].get(reason, 0) + n
+
     with pdfplumber.open(filepath) as pdf:
         all_rows = []
         header = None
+        raw_header = None
         for page in pdf.pages:
             table = page.extract_table()
-            if table:
-                for row_idx, row in enumerate(table):
-                    if row_idx == 0 and header is None:
-                        # Clean header
-                        raw_header = [str(c).strip() if c else f"col_{i}" for i, c in enumerate(row)]
-                        # Resolve pdfplumber column-joining artifact
-                        header = []
-                        for c in raw_header:
-                            c_lower = c.lower()
-                            if "s.no" in c_lower:
-                                header.append("S.No")
-                            elif "account" in c_lower:
-                                header.append("Account No")
-                            elif "date" in c_lower:
-                                header.append("Date")
-                            elif "desc" in c_lower:
-                                header.append("Description")
-                            elif "amount" in c_lower:
-                                header.append("Amount")
-                            elif "type" in c_lower or "dr/cr" in c_lower or "pe (" in c_lower:
-                                header.append("Type")
-                            elif "bal" in c_lower or "r)" in c_lower:
-                                header.append("Balance")
-                            else:
-                                header.append(c)
-                        continue
-                    if row_idx == 0 and header is not None:
-                        # Skip header on subsequent pages
-                        continue
-                    if len(row) == len(header):
-                        all_rows.append(row)
+            if not table:
+                continue
+            for row in table:
+                if header is None:
+                    # Clean header
+                    raw_header = [str(c).strip() if c else f"col_{i}" for i, c in enumerate(row)]
+                    # Resolve pdfplumber column-joining artifact
+                    header = []
+                    for c in raw_header:
+                        c_lower = c.lower()
+                        if "s.no" in c_lower:
+                            header.append("S.No")
+                        elif "account" in c_lower:
+                            header.append("Account No")
+                        elif "date" in c_lower:
+                            header.append("Date")
+                        elif "desc" in c_lower:
+                            header.append("Description")
+                        elif "amount" in c_lower:
+                            header.append("Amount")
+                        elif "type" in c_lower or "dr/cr" in c_lower or "pe (" in c_lower:
+                            header.append("Type")
+                        elif "bal" in c_lower or "r)" in c_lower:
+                            header.append("Balance")
+                        else:
+                            header.append(c)
+                    continue
+
+                if _looks_like_repeated_header(row, raw_header):
+                    # A repeated header is not data and is not a loss — do not count it.
+                    continue
+
+                stats["total_rows"] += 1
+                if len(row) == len(header):
+                    all_rows.append(row)
+                else:
+                    _skip("column_count_mismatch")
 
         if not header or not all_rows:
+            stats["parsed_rows"] = 0
             return events
 
         # Build DataFrame
         df = pd.DataFrame(all_rows, columns=header)
-        events = _parse_bank_df(df, str(filepath))
+        events = _parse_bank_df(df, str(filepath), stats=stats)
 
+    stats["parsed_rows"] = len(events)
     return events
 
 
-def _parse_bank_df(df, source_file):
-    """Generic bank DataFrame parser — auto-detects columns."""
+def _parse_bank_df(df, source_file, stats=None):
+    """
+    Generic bank DataFrame parser — auto-detects columns.
+
+    `stats`, if given, accumulates a per-reason count of rows that could not be
+    turned into an event (unreadable date, no usable amount). These used to be
+    dropped with a bare `continue`, which is how 16% of one statement went missing
+    while the pipeline reported zero skipped rows.
+    """
     events = []
+
+    def _skip(reason, n=1):
+        if stats is None:
+            return
+        stats["skipped_rows"] = stats.get("skipped_rows", 0) + n
+        reasons = stats.setdefault("skip_reasons", {})
+        reasons[reason] = reasons.get(reason, 0) + n
 
     # Auto-detect columns
     date_col = _find_column(df.columns, "date")
@@ -217,12 +277,14 @@ def _parse_bank_df(df, source_file):
     if not date_col:
         print(f"  WARNING: Could not find date column in {source_file}")
         print(f"  Available columns: {list(df.columns)}")
+        _skip("no_date_column", len(df))
         return events
 
     for idx, row in df.iterrows():
         # Parse date
         timestamp = _parse_date(row.get(date_col))
         if timestamp is None:
+            _skip("unparseable_date")
             continue
 
         # Parse narration
@@ -232,6 +294,7 @@ def _parse_bank_df(df, source_file):
         # Determine direction and amount
         direction, amount = _get_direction(row, debit_col, credit_col, type_col, amount_col)
         if amount == 0:
+            _skip("missing_or_zero_amount")
             continue
 
         # Get account from column if available, else extract from narration/source_file

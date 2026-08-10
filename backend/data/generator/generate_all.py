@@ -1040,24 +1040,50 @@ def export_bank_pdf(txns, filepath):
     elements.append(Paragraph("ICICI Bank — Account Statement", styles['Title']))
     elements.append(Spacer(1, 10*mm))
 
-    # Wrap long narration text
+    # Wrap the narration column so long text flows onto extra lines instead of
+    # overrunning its cell. reportlab does not wrap bare strings in a table cell —
+    # it draws them past the cell border, and a text extractor then reads the
+    # clipped remains. Every description goes through a Paragraph for that reason.
     wrapped_data = []
     for row in table_data:
         wrapped_row = []
         for i, cell in enumerate(row):
-            if i == 3 and isinstance(cell, str) and len(cell) > 40:
-                wrapped_row.append(Paragraph(cell, styles['Normal']))
+            if i == 3:
+                wrapped_row.append(Paragraph(str(cell), styles['Normal']))
             else:
                 wrapped_row.append(str(cell))
         wrapped_data.append(wrapped_row)
 
-    table = Table(wrapped_data, colWidths=[25, 55, 45, 180, 50, 30, 55])
+    # Column widths, in points. A4 is 595.3pt wide; 15mm margins leave 510.2pt of
+    # usable width, so these must sum to less than that.
+    #
+    # Each width is set from the widest string the column actually carries at 7pt
+    # Helvetica plus the 3pt padding set below. The Date column is the one that
+    # matters: "01/06/25 21:53:47" measures ~56pt, so the old 45pt width clipped
+    # the first and last character off every timestamp on the page — dates came
+    # out as '0/06/25 21:53:4' and failed to parse, silently deleting the row.
+    col_widths = [
+        26,   # S.No
+        64,   # Account No
+        66,   # Date        <- 56pt of text + padding
+        178,  # Description (wrapped Paragraph)
+        52,   # Amount
+        54,   # Type (DR/CR) — sized for the header, which is wider than "DR"/"CR"
+        50,   # Bal.
+    ]
+
+    # repeatRows=1 redraws the header at the top of every page, which is what a
+    # real bank statement does. The parser detects and skips those repeats by
+    # matching the text, rather than assuming the first row of each page is one.
+    table = Table(wrapped_data, colWidths=col_widths, repeatRows=1)
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a1d24')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 7),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),

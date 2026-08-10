@@ -195,8 +195,20 @@ def parse_messy_file(filepath):
         try:
             # Fallback to bank_parser PDF reader logic
             from ingestion.bank_parser import parse_bank_pdf
-            events = parse_bank_pdf(filepath)
-            return events, {"detected_type": "bank", "confidence": 1.0, "total_rows": len(events), "parsed_rows": len(events), "skipped_rows": 0}
+            pdf_stats = {}
+            events = parse_bank_pdf(filepath, stats=pdf_stats)
+            # total_rows is the number of DATA rows found in the document, and
+            # skipped_rows is how many of them the parser could not read. Both come
+            # from the parser itself — this used to report `skipped_rows: 0`
+            # unconditionally, which hid every dropped row.
+            return events, {
+                "detected_type": "bank",
+                "confidence": 1.0,
+                "total_rows": pdf_stats.get("total_rows", len(events)),
+                "parsed_rows": len(events),
+                "skipped_rows": pdf_stats.get("skipped_rows", 0),
+                "skip_reasons": pdf_stats.get("skip_reasons", {}),
+            }
         except Exception as e:
             return [], {"error": f"Failed to read PDF: {str(e)}", "file": filepath.name}
     else:
