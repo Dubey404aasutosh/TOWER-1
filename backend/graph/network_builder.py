@@ -233,22 +233,38 @@ def build_network_graph(all_events_df, scored_entities, entities):
         ]
 
         if not valid_calls.empty:
+            call_aggs = {
+                'freq': ('counterparty', 'size'),
+                'source_file': ('source_file', 'first'),
+            }
+            if 'timestamp' in valid_calls.columns:
+                call_aggs['first_ts'] = ('timestamp', 'min')
+                call_aggs['last_ts'] = ('timestamp', 'max')
             call_agg = valid_calls.groupby(['entity_id', 'callee_entity']).agg(
-                freq=('counterparty', 'size'),
-                source_file=('source_file', 'first'),
-            ).reset_index()
+                **call_aggs).reset_index()
 
             for row in call_agg.itertuples(index=False):
                 caller, callee, freq = row.entity_id, row.callee_entity, int(row.freq)
                 inst = _source_file_to_institution(row.source_file)
+                first_ts = getattr(row, 'first_ts', None)
+                last_ts = getattr(row, 'last_ts', None)
                 if G.has_edge(caller, callee):
                     G[caller][callee]['call_frequency'] = freq
+                    # A pair that both transferred and talked keeps the wider span.
+                    existing = G[caller][callee]
+                    if first_ts is not None and (existing.get('first_ts') is None
+                                                 or first_ts < existing['first_ts']):
+                        existing['first_ts'] = first_ts
+                    if last_ts is not None and (existing.get('last_ts') is None
+                                                or last_ts > existing['last_ts']):
+                        existing['last_ts'] = last_ts
                 else:
                     G.add_edge(caller, callee, weight=freq * 100,
                                count=freq, edge_type='call',
                                call_frequency=freq,
                                source_file=row.source_file,
-                               institution=inst)
+                               institution=inst,
+                               first_ts=first_ts, last_ts=last_ts)
 
     return G
 
