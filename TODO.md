@@ -339,6 +339,11 @@ These are requirement lines currently scoring near zero. Backend and frontend tr
     figures just never arrive. This is closer to a one-line unhardcode than a 2h feature, which
     is why it is worth doing before S2.1 rather than after.
   - `kaleido` is already in `requirements.txt` purely for this and is never exercised.
+  - ⚠️ **Keep the 2h budget even though the code is ~20m.** `kaleido` has never been run in this
+    repo, and recent versions shell out to a headless Chrome for `to_image()`. Smoke-test it on
+    its own (`fig.to_image(format="png")`) **before** wiring anything, so a rendering-backend
+    problem does not look like a report bug. If it fights back, `matplotlib` → PNG → `add_picture`
+    is a legitimate fallback; the requirement is a chart in the `.docx`, not Plotly specifically.
   - FR-IV.c explicitly says *"with charts and the evidentiary timeline"*.
   - ✅ **Day 1 bonus:** `create_network_plotly` now draws off the de-duplicated graph, so an
     embedded money-flow chart will show ₹275,659 for the layering hop — not the doubled
