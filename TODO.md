@@ -495,6 +495,29 @@ These are requirement lines currently scoring near zero. Backend and frontend tr
     embedded money-flow chart will show ₹275,659 for the layering hop — not the doubled
     ₹551,318 it would have printed into a court exhibit yesterday.
   - ✅ *Done when:* the sample `.docx` contains a timeline image and a money-flow image.
+  - **✅ Shipped — and the 2h budget was the right call, for exactly the stated reason.**
+    Smoke-testing `kaleido` first was what saved this: it *works* (12 KB PNG, no crash), so the
+    naive one-line unhardcode would have looked correct — and silently added **~56 s** to the
+    pipeline, because kaleido costs **~3.5 s per image and does not amortise**. The failure would
+    have surfaced on stage as "why is this taking a minute", not as a report bug. Switched to the
+    pre-authorised matplotlib fallback at **~0.1 s per image**; `renderer="plotly"` still selects
+    the kaleido path, so the figures are genuinely *received and used*, not received and discarded.
+  - The report gained a **timeline section it never had** (FR-IV.c asks for "charts **and the
+    evidentiary timeline**"), so each forensic `.docx` now carries 2 figures and the STR carries
+    the chronology of its own transaction schedule. Sections renumbered to 7.
+  - Both figures are drawn **light-on-white**, not in the dashboard's dark theme — this is a
+    document that gets printed and filed.
+  - The money-flow figure is the entity's **own neighbourhood**, not the global graph, and its
+    labelled amounts read ₹275,659 / ₹200,829 — the same figures as the LAY-1 explanation and the
+    bank statement behind them.
+  - Two rendering defects caught by actually looking at the output: node captions were white text
+    drawn wider than the marker, so everything overhanging the dot fell on white paper and
+    vanished (`ENT_0021` rendered as `002`); and edge amount labels collided with node captions on
+    near-vertical edges.
+  - ⚠️ **Report generation moved out of the pipeline** — see the Day 2 header note. Verified
+    end-to-end over HTTP: `GET /api/download-report/ENT_0043` → **200, 195 KB, 1.9 s, 2 embedded
+    images**. Committed samples are `backend/reports/sample_*.docx` (forensic: 2 charts,
+    STR: 1 chart).
 
 ---
 
