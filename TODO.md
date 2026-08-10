@@ -25,17 +25,19 @@ If you fall behind, **ship P0 + P1 and skip P2 entirely.** P0 alone takes you fr
 ~~Never cut: `S0.1` (fabricated hashes), `S1.1` (LAY-1), `S1.4` (money-flow graph).~~
 ✅ **All three un-cuttables are shipped.** P0 and Day 0 are done.
 
-**Revised cut line for what's left.** Two items are now un-cuttable, for different reasons:
-- **`S1.6` (IDR-1 fires 0×)** — a rule the README advertises does nothing. Same credibility class
-  as the fabricated hashes: it is *dishonest*, not merely incomplete. ~1h.
-- **`S2.1` (timeline)** — the last named requirement (FR-II.a) with **zero** implementation, and
-  the demo's step 5. Everything else on the list improves something that already exists.
+~~**Revised cut line for what's left.** Two items are now un-cuttable, for different reasons:~~
+~~- **`S1.6` (IDR-1 fires 0×)** — a rule the README advertises does nothing.~~
+~~- **`S2.1` (timeline)** — the last named requirement (FR-II.a) with **zero** implementation.~~
 
-Cheapest-first ordering for Day 2, based on what Day 1 left in place:
-**S2.4 (~20m, the plumbing is already written) → S1.6 (~1h) → S2.3 (~1h, half done) → S2.2 (3h) → S2.1 (4h).**
-If time runs out, cut **S2.2** — a judge asking to filter is a worse look than a judge asking
-about a rule that never fires, but it is the only one of the five that costs 3h and breaks nothing
-by its absence.
+✅ **Nothing was cut. All five Day 2 items shipped in the planned order**
+(S2.4 → S1.6 → S2.3 → S2.2 → S2.1), including S2.2, which the cut line had marked as the
+one to drop.
+
+**What remains is Day 3 (P2) only:** S3.1 (metric integrity) · S3.2 (O(N²) hot loop) ·
+S3.3 (TCS-2 link check) · S3.4 (MUL-1 false positive) · S3.5 (docs) · S3.6 (rehearse).
+Two of those got partly done early as a side effect of Day 2 work — see the notes on
+**S3.5** (IDR-1's documented definition now matches the rule) and the P3 float-row-ref item
+(fixed, because the evidence panel renders those references to a judge).
 
 ---
 
