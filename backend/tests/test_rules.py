@@ -31,6 +31,16 @@ from correlation.rules import (
 from pipeline import run_pipeline
 
 
+@pytest.fixture(scope="module")
+def pipeline_results():
+    """
+    One full pipeline run, shared by every end-to-end assertion in this module.
+    The run costs ~8 s; executing it per test would multiply that by the number
+    of end-to-end checks for no additional coverage.
+    """
+    return run_pipeline()
+
+
 # ============================================================
 # 1. STR-1: STRUCTURING BOUNDARY TESTS
 # ============================================================
@@ -441,13 +451,12 @@ def test_tcs2_sim_swap_correlation_positive():
 # ============================================================
 # 7. END-TO-END PIPELINE REGRESSION TEST
 # ============================================================
-def test_end_to_end_pipeline_quality_regression():
+def test_end_to_end_pipeline_quality_regression(pipeline_results):
     """
     End-to-end regression test running the full pipeline on synthetic dataset.
     Asserts Recall >= 80.00% and Precision >= 26.67%.
     """
-    results = run_pipeline()
-    verification = results.get("verification", {})
+    verification = pipeline_results.get("verification", {})
 
     recall = verification.get("recall", 0.0)
     precision = verification.get("precision", 0.0)
