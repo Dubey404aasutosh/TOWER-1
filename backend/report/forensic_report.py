@@ -502,6 +502,22 @@ def generate_str_report(entity_id, entity_data, risk_data, all_events_df,
     else:
         doc.add_paragraph('No transaction events found for this entity.')
 
+    # Chronology of the schedule above. An STR is a filing form rather than an
+    # analytical exhibit, so this is the one figure it carries: it shows the
+    # reporting officer the shape of the activity being reported — and where the
+    # reported transfers sit relative to the subject's telephony and internet use.
+    timeline_bytes = _resolve_png(timeline_png)
+    if timeline_bytes:
+        doc.add_paragraph()
+        chrono = doc.add_paragraph()
+        chrono.add_run('Chronology of reported activity: ').bold = True
+        chrono.add_run(
+            'transactions, telephony and internet sessions for the subject on one time axis. '
+            'Shaded bands mark the windows in which a transfer coincided with a call and an '
+            'active internet session.'
+        )
+        doc.add_picture(io.BytesIO(timeline_bytes), width=Inches(6.5))
+
     # --- SECTION 5: TOTAL VALUE INVOLVED ---
     doc.add_heading('5. Total Value Involved', level=1)
     tv_para = doc.add_paragraph()
