@@ -189,7 +189,10 @@ def serialize_money_flow_graph(network_graph, scored_entities, entities, max_nod
 
         nodes.append({
             "id": eid,
-            "label": eid.replace("ENT_", "E"),
+            # Label only the entities worth reading at a glance. With every LOW node
+            # labelled, 150 overlapping captions bury the handful that matter; the
+            # identity is still on the hover tooltip and in the inspector.
+            "label": eid.replace("ENT_", "E") if tier != "LOW" else "",
             "group": tier.lower(),
             "shape": "dot",
             "size": TIER_NODE_SIZE.get(tier, 11),
@@ -236,8 +239,10 @@ def serialize_money_flow_graph(network_graph, scored_entities, entities, max_nod
         if is_layering:
             meta["layering_edges"] += 1
             edge_class = "layering"
-            color = {"color": "#FF4D4D", "highlight": "#FF7A7A", "opacity": 0.95}
-            width = max(width, 4.0)
+            color = {"color": "#FF3B3B", "highlight": "#FF8A8A", "opacity": 1.0}
+            # Deliberately the heaviest stroke on the canvas: in a 600-edge graph the
+            # laundering chain has to be findable without hunting for it.
+            width = max(width, 7.0)
             title += "\nLAY-1 — hop on a detected layering chain"
         elif is_smoking_gun and edge_type == "transaction":
             meta["smoking_gun_edges"] += 1
@@ -247,10 +252,10 @@ def serialize_money_flow_graph(network_graph, scored_entities, entities, max_nod
             title += "\nTCS — transfer inside a correlated call/session window"
         elif edge_type == "transaction":
             edge_class = "transaction"
-            color = {"color": "rgba(61,124,255,0.55)", "highlight": "#3D7CFF"}
+            color = {"color": "rgba(61,124,255,0.32)", "highlight": "#3D7CFF"}
         else:
             edge_class = "call"
-            color = {"color": "rgba(155,161,168,0.35)", "highlight": "#9BA1A8"}
+            color = {"color": "rgba(155,161,168,0.16)", "highlight": "#9BA1A8"}
 
         edges.append({
             "id": f"{u}__{v}",

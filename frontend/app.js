@@ -1833,9 +1833,14 @@ function initNetworkWithData(data) {
       selectionWidth: 2,
     },
     physics: {
-      stabilization: { iterations: directed ? 200 : 100 },
-      barnesHut: { springLength: directed ? 170 : 130, springConstant: 0.04,
-                   avoidOverlap: directed ? 0.2 : 0 }
+      stabilization: { iterations: directed ? 300 : 100 },
+      // The money-flow graph is dense (≈150 nodes / 600 edges). Default repulsion
+      // collapses it into a hairball where the flagged chain is unfindable, so push
+      // the nodes much further apart and weaken the pull toward centre.
+      barnesHut: directed
+        ? { springLength: 260, springConstant: 0.02, gravitationalConstant: -14000,
+            centralGravity: 0.12, damping: 0.4, avoidOverlap: 0.45 }
+        : { springLength: 130, springConstant: 0.04 }
     },
     interaction: { hover: true, dragNodes: true, zoomView: true, tooltipDelay: 120 },
     layout: {},
