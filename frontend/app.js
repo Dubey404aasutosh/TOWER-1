@@ -2144,7 +2144,9 @@ function applyNetworkFilters() {
     const ok = edgeVisible.get(key) && nodeVisible.get(e.from) && nodeVisible.get(e.to);
     edgeVisible.set(key, !!ok);
     if (ok) shownEdges++;
-    edgeUpdates.push({ id: e.id, hidden: !ok });
+    // An edge without an id cannot be addressed in the DataSet; skip rather than
+    // push an update keyed on undefined, which would throw.
+    if (e.id != null) edgeUpdates.push({ id: e.id, hidden: !ok });
   });
 
   let shownNodes = 0;
