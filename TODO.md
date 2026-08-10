@@ -627,11 +627,14 @@ Track these — each should be answerable by submission:
 | "Why is nothing CRITICAL?" | ✅ 4 CRITICAL, each on ≥2 corroborating rules | S1.1 |
 | "Did every PDF row get parsed?" | ✅ 207 of 208 — the 1 skip is named and its cause reported | S1.3 |
 | "₹551,318? The statement says ₹275,659." | ✅ edges no longer double-count debit + credit | S1.4 |
-| "Do all seven rules work?" | ❌ **IDR-1 still fires 0×** | **S1.6** |
-| "Open this entity's timeline." | ❌ Doesn't exist | S2.1 |
-| "Filter to transfers over ₹1L, 2–4 PM." | ❌ No filter exists | S2.2 |
+| "Do all seven rules work?" | ✅ All 7 fire. IDR-1 catches `ENT_0044` — 1 IMEI running 3 MSISDNs + 3 accounts | **S1.6** |
+| "Open this entity's timeline." | ✅ Live view + `/api/entity/{id}/timeline`; `ENT_0043` shows session → ₹5,00,000 → call in 20 min | S2.1 |
+| "Filter to transfers over ₹1L, 2–4 PM." | ✅ Amount slider + date range + city + rule + tier + search, per view | S2.2 |
+| "Why this score? Show me the row." | ✅ TCS-1 on `ENT_0042` cites `bank row 215`, `cdr row 1016`, `ipdr row 545` | S2.3 |
+| "Open the .docx — where are the charts?" | ✅ Timeline + money-flow embedded; 195 KB in 1.9 s on demand | S2.4 |
 | "Why are these two clean accounts flagged?" | ⚠️ They are the planted chain's intermediaries; the metric counts them as FPs | S3.1 |
 | "How does this scale?" | ❌ 961s @ 48k events | S3.2 |
+| "TCS-2 fired — was the transfer actually *to* the person called?" | ❌ Not checked; `rules.py` admits it in a comment | S3.3 |
 
 ---
 
