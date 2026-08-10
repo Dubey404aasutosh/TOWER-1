@@ -2449,6 +2449,19 @@ input,select{font-family:var(--font-ui);}
 .ev-meta { font-size:11px; color:var(--txt-muted); margin-top:1px; font-family:var(--font-mono); }
 .ev-hash { font-family:var(--font-mono); font-size:10.5px; color:var(--txt-muted); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-left:auto; text-align:right; max-width:200px; }
 
+/* ── INSPECTOR EVIDENCE DRILL-DOWN (S2.3) ────────────── */
+/* Renders /api/entity/{id}/trace under the inspector's rule chips: each firing's
+   explanation, its structured metadata, and the source rows it cites. */
+.ev-rule-block { margin-bottom:10px; padding:8px; background:var(--dark); border:1px solid var(--border-dark); border-radius:var(--r-sm); }
+.ev-rule-block:last-of-type { margin-bottom:0; }
+.ev-rule-head { display:flex; flex-wrap:wrap; align-items:center; gap:4px; }
+.ev-tok { background:rgba(61,124,255,0.08); border:1px solid rgba(61,124,255,0.18); border-radius:4px; padding:1px 5px; font-size:9.5px; font-family:var(--font-mono); color:var(--blue); }
+.ev-rule-expl { font-size:11px; line-height:1.45; color:var(--txt-dim); margin-top:6px; }
+.ev-rows { margin-top:7px; display:flex; flex-direction:column; gap:3px; }
+.ev-row { display:flex; align-items:baseline; gap:7px; font-size:10.5px; line-height:1.4; }
+.ev-row-ref { font-family:var(--font-mono); font-weight:600; color:var(--yellow); white-space:nowrap; flex-shrink:0; }
+.ev-row-detail { font-family:var(--font-mono); color:var(--txt-muted); overflow-wrap:anywhere; }
+
 /* ── TRACE ───────────────────────────────────────────── */
 .trace-list { padding:0; }
 .trace-item { display:flex; align-items:flex-start; gap:12px; padding:12px 16px; border-bottom:1px solid var(--border-dark); font-size:12.5px; }
