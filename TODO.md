@@ -3,6 +3,12 @@
 **Baseline (measured):** ~70% built · **~48% working** · detection recall 60% / precision 60% (strict) · pipeline 27.3s @ 2,372 events
 **Target at submission:** **~80% working** · recall ≥75% / precision ≥70% · pipeline < 8s · zero fabricated data on screen
 
+**After Day 0 + Day 1 (measured):** recall **100%** / precision **62.5%** / F1 **76.9%** · **CRITICAL = 4** ·
+pipeline **9.1s @ 2,404 events** · PDF parsing **207/208 rows with the 1 loss reported** · money-flow graph live ·
+`pytest backend/tests/` **48 passed**.
+Precision is the one number still under target — see the Day 1 note below: the shortfall is a
+**ground-truth labelling artifact that S3.1 fixes**, not a detection regression.
+
 > **The core problem is not missing code — it is disconnected code.** The money-flow graph, the trace endpoint, the chart renderers, and the progress callback are all already built and simply never called. Most P0 items below are wiring, not algorithms.
 
 ---
@@ -194,11 +200,57 @@ Restores advertised functionality. Every item is a defect fix, not a feature.
   - Highlight edges where **TCS-1/TCS-2** fired — `correlation.md:114` calls these the "smoking gun" edges.
   - Keep the identity graph available behind a toggle ("Identity view / Money-flow view") — it's a genuine second story, just not *the* one the PS asks for.
   - 🏆 Earns: FR-IV.a + evaluation criterion #4. Currently ~30%.
+  - **✅ Shipped.** `/api/results` now returns `network` = **money-flow** plus
+    `network_views: {money_flow, identity}`; the dashboard has a Money-flow / Identity toggle
+    and writes its title, legend and stat line from whichever view is active.
+    Nodes are entities sized/coloured by tier; only the 154 that carry an edge or a flag are
+    drawn (**1,214 unconnected dots suppressed**, and the count is stated on screen rather than
+    hidden). Edges are directed with arrows, transfer width scales log-wise with amount, calls
+    are dashed. Labels are drawn only for the 12 flagged entities — 150 overlapping captions
+    buried the ones that mattered.
+  - **Two defects found and fixed while wiring this up — neither was on any list:**
+    1. 🔴 **Edge amounts were doubled.** One transfer appears in *both* statements — a debit at
+       the sender and a credit at the receiver, under different UTRs — and `build_network_graph`
+       summed both. The ₹275,659 layering hop rendered as **₹551,318**, contradicting the
+       statement a judge can open. Now the sender's debit rows are counted, with credit rows
+       used only when no debit for that pair was ingested (flagged in the tooltip when so).
+       The four chain edges now read ₹275,659 → ₹253,828 → ₹228,215 → ₹200,829 — *exactly* the
+       amounts in the LAY-1 explanation. Guarded by `test_transfer_amounts_are_not_double_counted`.
+    2. 🔴 **The graph had never been visible.** `dashboard.html` wraps it in `.network-layout`,
+       which **has no CSS rule at all**, so `.network-canvas { flex:1 }` resolved against a
+       zero-height parent — canvas measured **992×0**. Compounding it, the graph was being built
+       by `fetchRealResults()` while the network view was still `display:none`, so vis.js
+       measured an invisible container. Layout rule added; construction moved to when the view
+       is actually shown; `initNetwork()` re-fits on return. Canvas now measures **992×463**.
+  - **Layering highlight is exact, not heuristic.** LAY-1 emits a `chain:A>B>C` evidence token
+    and the serializer lights precisely those hops — so hops through `ENT_0021`, which never
+    fired LAY-1 itself, are still highlighted. Chain strokes are the heaviest on the canvas
+    (7.0 vs 5.61 max), which is what makes the demo's step 4 land.
 
-- [ ] **S1.5 — Confirm CRITICAL is reachable end-to-end** ⏱ 30m
+- [x] **S1.5 — Confirm CRITICAL is reachable end-to-end** ⏱ 30m
   - After S1.1, re-run and check `CRITICAL > 0`. Both paths require LAY-1 or IDR-1, so today it is always 0.
   - Also pass `rule_severities` through — `backend/scoring/risk_engine.py:183-189` drops it, so the IDR-1 HIGH/MEDIUM/LOW sub-levels (good design) never reach the UI.
   - ✅ *Done when:* at least one entity shows CRITICAL with its two corroborating rules named.
+  - **✅ Shipped. CRITICAL = 4** (`ENT_0007`, `ENT_0014`, `ENT_0042`, `ENT_0043`), every one of
+    them gated on ≥2 corroborating rules — asserted by `test_critical_tier_is_reachable`.
+    `rule_severities` now flows `run_all_rules → risk_engine → /api/results → node payload`,
+    and the inspector renders the grade beside each rule chip (`LAY-1 HIGH`, `TCS-1 MEDIUM`).
+    Note the tier logic was already *reading* severities correctly — what was missing is that
+    they never left the backend, so the UI could not explain the difference between two
+    entities with the same rule list.
+
+- [ ] **S1.6 — IDR-1 fires 0×: the second dead rule** ⏱ ~1h 🔴 **NEW — found on Day 1**
+  - Not on the original list. With LAY-1 alive, **IDR-1 is now the only rule that never fires**,
+    on any entity, anywhere in the dataset.
+  - `E044` is the *planted* identity-fan-out entity and is detected only incidentally, by STR-1.
+    The detection is a coincidence, and a rule the README advertises does nothing.
+  - Likely the same class of bug as S1.1: `check_idr1` groups by `entity_ref` and looks for a
+    **consecutive** IMEI/IMSI change, while `correlation.md:69` documents *"3+ accounts or 2+
+    IMEIs"* — which is what the generator plants. **Start by asserting the documented definition
+    in a unit test,** the way S0.4's de-tautologised tests exposed LAY-1 and LOC-1.
+  - ⚠️ Blocks the pre-submission line **"all 7 rules fire at least once across the dataset"**, and
+    leaves the `LAY-1 AND IDR-1` path to CRITICAL still never exercised.
+  - 🏆 Earns: honesty on the README's "7 Deterministic Forensic Rules" claim (ties into S3.5).
 
 ---
 
@@ -330,16 +382,19 @@ These are requirement lines currently scoring near zero. Backend and frontend tr
 
 Track these — each should be answerable by submission:
 
-| Question | Today | Fixed by |
+| Question | Status | Fixed by |
 |---|---|---|
-| "Show me a circular flow." | Structurally impossible | S1.1 + S1.2 |
-| "That's the money-flow network?" | It's the identity graph | S1.4 |
-| "Where does that SHA-256 come from?" | `Math.random()` | **S0.1** |
-| "Open this entity's timeline." | Doesn't exist | S2.1 |
-| "Filter to transfers over ₹1L, 2–4 PM." | No filter exists | S2.2 |
-| "Why is nothing CRITICAL?" | Two rules are dead | S1.1 |
-| "Did every PDF row get parsed?" | 175 of 208; reported 0 skipped | S1.3 |
-| "How does this scale?" | 961s @ 48k events | S3.2 |
+| "Show me a circular flow." | ✅ `ENT_0042 → ENT_0014 → ENT_0007 → ENT_0021 → ENT_0042`, 8.2h, skims 7.9/10.1/12.0% | S1.1 + S1.2 |
+| "That's the money-flow network?" | ✅ 617 weighted edges, ₹71,15,038, arrows on; identity graph behind a toggle | S1.4 |
+| "Where does that SHA-256 come from?" | ✅ `hashlib`, streamed over the file | **S0.1** |
+| "Why is nothing CRITICAL?" | ✅ 4 CRITICAL, each on ≥2 corroborating rules | S1.1 |
+| "Did every PDF row get parsed?" | ✅ 207 of 208 — the 1 skip is named and its cause reported | S1.3 |
+| "₹551,318? The statement says ₹275,659." | ✅ edges no longer double-count debit + credit | S1.4 |
+| "Do all seven rules work?" | ❌ **IDR-1 still fires 0×** | **S1.6** |
+| "Open this entity's timeline." | ❌ Doesn't exist | S2.1 |
+| "Filter to transfers over ₹1L, 2–4 PM." | ❌ No filter exists | S2.2 |
+| "Why are these two clean accounts flagged?" | ⚠️ They are the planted chain's intermediaries; the metric counts them as FPs | S3.1 |
+| "How does this scale?" | ❌ 961s @ 48k events | S3.2 |
 
 ---
 
