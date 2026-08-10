@@ -212,7 +212,7 @@ def render_timeline_png(payload, title=None, width_in=7.4, height_in=3.1):
     return _fig_to_png(fig)
 
 
-def _ego_subgraph(network_graph, entity_id, max_neighbours=14):
+def _ego_subgraph(network_graph, entity_id, max_neighbours=10):
     """The focus entity plus its heaviest direct counterparties."""
     neighbours = set()
     if network_graph.has_node(entity_id):
