@@ -483,12 +483,13 @@
                 <i class="fa-solid fa-fingerprint"></i> Identity
               </button>
             </div>
-            <div class="filter-group">
-              <button class="filter-btn active" onclick="applyNetworkFilter('all',this)">All Nodes</button>
-              <button class="filter-btn" onclick="applyNetworkFilter('critical',this)">Critical Only</button>
-              <button class="filter-btn" onclick="applyNetworkFilter('phone',this)">Phones</button>
-              <button class="filter-btn" onclick="applyNetworkFilter('account',this)">Bank Accounts</button>
-            </div>
+            <!-- Quick filters are built per view. The two graphs have different
+                 node types entirely: "Phones"/"Bank Accounts" mean nothing on the
+                 money-flow graph whose nodes are resolved entities, and "Critical
+                 Only" means nothing on the identity graph whose nodes are raw
+                 identifiers carrying no risk tier. A fixed button set would lie on
+                 one of the two, so buildNetworkQuickFilters() renders each. -->
+            <div class="filter-group" id="network-quick-filters"></div>
             <button class="btn btn-ghost btn-sm" id="btn-reset-network">
               <i class="fa-solid fa-rotate-right"></i> Reset View
             </button>
