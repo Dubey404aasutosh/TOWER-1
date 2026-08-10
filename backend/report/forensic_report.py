@@ -566,10 +566,62 @@ def generate_str_report(entity_id, entity_data, risk_data, all_events_df,
     return filepath
 
 
+def build_report_figures(entity_id, risk_data, all_events_df, scored_entities,
+                          network_graph=None, enriched_txns=None, window_minutes=10,
+                          layering_hops=None):
+    """
+    Render the two figures embedded in one entity's forensic report.
+
+    Returns (timeline_png, network_png) — either may be None when the entity has
+    nothing to draw, which the report states plainly rather than papering over.
+    """
+    from correlation.temporal_join import build_timeline_payload
+    from report.report_charts import render_money_flow_png, render_timeline_png
+
+    timeline_png = None
+    network_png = None
+
+    try:
+        payload = build_timeline_payload(
+            all_events_df, entity_id,
+            enriched_txns=enriched_txns,
+            window_minutes=window_minutes,
+            rule_evidence=risk_data.get("evidence", {}),
+        )
+        tier = risk_data.get("risk_tier", "LOW")
+        rules = ", ".join(risk_data.get("rules_fired", [])) or "no rules fired"
+        timeline_png = render_timeline_png(
+            payload, title=f"{entity_id} — {tier} · {rules}"
+        )
+    except Exception as e:
+        print(f"  [chart] timeline failed for {entity_id}: {type(e).__name__}: {e}")
+
+    try:
+        network_png = render_money_flow_png(
+            network_graph, scored_entities, entity_id,
+            layering_hops=layering_hops,
+        )
+    except Exception as e:
+        print(f"  [chart] money-flow failed for {entity_id}: {type(e).__name__}: {e}")
+
+    return timeline_png, network_png
+
+
 def generate_reports_for_flagged(scored_entities, entities, all_events_df,
                                   create_timeline_fn=None, create_network_fn=None,
-                                  network_graph=None):
-    """Generate forensic Word reports for all entities with risk tier HIGH or CRITICAL."""
+                                  network_graph=None, enriched_txns=None,
+                                  window_minutes=10, renderer="matplotlib"):
+    """
+    Generate forensic Word reports for all entities with risk tier HIGH or CRITICAL.
+
+    renderer:
+      "matplotlib" (default) — figures from report_charts, ~0.1 s each, in process.
+      "plotly"               — uses create_timeline_fn / create_network_fn through
+                               kaleido. Measured at ~3.5 s per image and it does not
+                               amortise, so it is opt-in: on this dataset it adds
+                               roughly a minute to the run. The global money-flow
+                               figure is rendered once and shared across reports.
+    """
     flagged = {eid: data for eid, data in scored_entities.items()
                if data["risk_tier"] in ["HIGH", "CRITICAL"]}
 
@@ -577,12 +629,43 @@ def generate_reports_for_flagged(scored_entities, entities, all_events_df,
         print("  No HIGH/CRITICAL entities to report on.")
         return []
 
+    from report.report_charts import extract_layering_hops
+    layering_hops = extract_layering_hops(scored_entities)
+
+    shared_network_fig = None
+    if renderer == "plotly" and create_network_fn and network_graph is not None:
+        try:
+            shared_network_fig = create_network_fn(network_graph, scored_entities)
+        except Exception as e:
+            print(f"  [chart] plotly network figure failed: {type(e).__name__}: {e}")
+
     reports = []
     for entity_id, risk_data in flagged.items():
         entity_data = entities.get(entity_id, {})
+
+        timeline_fig = None
+        timeline_png = None
+        network_png = None
+
+        if renderer == "plotly":
+            if create_timeline_fn is not None:
+                try:
+                    timeline_fig = create_timeline_fn(all_events_df, entity_id)
+                except Exception as e:
+                    print(f"  [chart] plotly timeline failed for {entity_id}: {type(e).__name__}: {e}")
+        else:
+            timeline_png, network_png = build_report_figures(
+                entity_id, risk_data, all_events_df, scored_entities,
+                network_graph=network_graph, enriched_txns=enriched_txns,
+                window_minutes=window_minutes, layering_hops=layering_hops,
+            )
+
         report_path = generate_forensic_report(
             entity_id, entity_data, risk_data, all_events_df,
-            timeline_fig=None, network_fig=None
+            timeline_fig=timeline_fig,
+            network_fig=shared_network_fig,
+            timeline_png=timeline_png,
+            network_png=network_png,
         )
         reports.append(report_path)
 
