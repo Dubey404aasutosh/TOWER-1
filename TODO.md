@@ -475,7 +475,7 @@ These are requirement lines currently scoring near zero. Backend and frontend tr
   - Also adds an **"Open timeline"** button, so the demo can go from the money-flow chain
     (step 4) straight into that entity's timeline (step 5) without hunting through a dropdown.
 
-- [ ] **S2.4 — Embed charts in the forensic report** ⏱ 2h budgeted · likely ~20m of code 🥇 **do this first on Day 2**
+- [x] **S2.4 — Embed charts in the forensic report** ⏱ 2h budgeted · likely ~20m of code 🥇 **do this first on Day 2**
   - Re-checked: `backend/report/forensic_report.py:525` accepts `create_timeline_fn` /
     `create_network_fn`, then **`:540` hardcodes `timeline_fig=None, network_fig=None`** — so the
     functions are received and discarded. Every report still prints
