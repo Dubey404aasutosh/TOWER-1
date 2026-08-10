@@ -204,6 +204,12 @@ def serialize_money_flow_graph(network_graph, scored_entities, entities, max_nod
             "rule_severities": scored_entities.get(eid, {}).get("rule_severities", {}),
             "ml_anomaly": bool(scored_entities.get(eid, {}).get("ml_anomaly")),
             "institution": ndata.get("institution", "Unknown"),
+            # Cities this entity was seen operating from, and the identifiers it
+            # holds — the fields the network view's location filter and entity
+            # search read. Without them those controls have nothing to match on.
+            "cities": list(ndata.get("cities", []) or []),
+            "phones": [str(p) for p in (edata.get("phones") or [])[:6]],
+            "accounts": [str(a) for a in (edata.get("accounts") or [])[:6]],
             "value_in": float(value_in),
             "value_out": float(value_out),
             "font": {"color": "#F2F3F4", "size": 11},
@@ -271,10 +277,29 @@ def serialize_money_flow_graph(network_graph, scored_entities, entities, max_nod
             "edge_class": edge_class,
             "amount": weight if edge_type == "transaction" else 0.0,
             "count": count,
+            # Span of the underlying events, so the time filter subsets edges on
+            # when the money actually moved rather than on nothing at all.
+            "t_start": _iso_or_none(data.get("first_ts")),
+            "t_end": _iso_or_none(data.get("last_ts")),
         })
 
     meta["rendered_nodes"] = len(nodes)
     meta["rendered_edges"] = len(edges)
+
+    # Facets: the real ranges and option lists the filter controls are built from,
+    # so the UI never offers a city or an amount band the data cannot produce.
+    amounts = [e["amount"] for e in edges if e["edge_type"] == "transaction" and e["amount"] > 0]
+    stamps = [t for e in edges for t in (e["t_start"], e["t_end"]) if t]
+    cities = sorted({c for n in nodes for c in n.get("cities", [])})
+    rules = sorted({r for n in nodes for r in (n.get("rules_fired") or [])})
+    meta["facets"] = {
+        "amount_min": min(amounts) if amounts else 0.0,
+        "amount_max": max(amounts) if amounts else 0.0,
+        "time_min": min(stamps) if stamps else None,
+        "time_max": max(stamps) if stamps else None,
+        "cities": cities,
+        "rules": rules,
+    }
     return {"nodes": nodes, "edges": edges, "meta": meta}
 
 
