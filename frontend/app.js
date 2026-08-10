@@ -1452,6 +1452,18 @@ async function fetchRealResults() {
         });
       });
       populatePOI();
+
+      // The report set is exactly the entities the backend escalates to
+      // HIGH/CRITICAL — the same predicate generate_reports_for_flagged() uses.
+      REPORTS = data.suspects
+        .filter(s => s.risk_tier === 'CRITICAL' || s.risk_tier === 'HIGH')
+        .map(s => ({
+          entityId: s.entity_id,
+          name: s.name && s.name !== 'Unknown' ? s.name : 'Unnamed entity',
+          tier: s.risk_tier,
+          rules: s.rules_fired || [],
+        }));
+      populateReports();
     }
     /* Cache both graphs, but do NOT build the vis.Network here. This runs while the
        dashboard view is showing, so the network container is display:none — vis.js
