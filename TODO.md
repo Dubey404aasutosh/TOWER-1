@@ -92,18 +92,56 @@ Four one-liners that are either credibility landmines or silent breakage.
 
 ---
 
-# 🔴 P0 — DAY 1 · Make the broken things work (~7h)
+# 🔴 P0 — DAY 1 · Make the broken things work (~7h) — ✅ **DONE**
 
 Restores advertised functionality. Every item is a defect fix, not a feature.
 
-- [ ] **S1.1 — Fix LAY-1 (fires 0× today)** ⏱ 1h 🔴 **HIGHEST IMPACT**
+> **Day 1 completed & verified.** `pytest backend/tests/` → **48 passed** (was 26).
+> Measured on the demo dataset, before → after:
+>
+> | | Before | After |
+> |---|---|---|
+> | Recall / Precision / F1 | 80% / 66.7% / 72.7% | **100% / 62.5% / 76.9%** |
+> | False negatives | 1 (E043 mule missed) | **0 — all 5 typologies detected** |
+> | CRITICAL entities | **0 (unreachable)** | **4** |
+> | LAY-1 firings | **0** | 3 (+ a closed 4-hop cycle) |
+> | `bank_icici.pdf` rows | 175 of 208, reported 0 skipped | **207 of 208, 1 skipped with a reason** |
+> | Total events | 2,372 | 2,404 |
+> | Pipeline runtime | 17.5s | **9.1s** |
+> | Graph served to the UI | identity (300 KYC edges, 0 money) | **money-flow (617 weighted edges, ₹71,15,038)** |
+>
+> **Rendered and inspected in headless Chrome** (CDP, live DOM read back): money-flow graph
+> draws on a real canvas (992×463 — see S1.4 below), all four layering hops highlighted as the
+> heaviest strokes, view toggle works both ways leaving exactly one canvas, and clicking
+> `ENT_0042` reports *Kashvi Edwin · CRITICAL · TCS-1 MEDIUM, TCS-2 MEDIUM, LAY-1 HIGH ·
+> In ₹5,00,829 / Out ₹2,75,659*. **Console clean — 0 errors, 0 failed requests.**
+>
+> ⚠️ **Two things to know before Day 2:**
+> 1. **Precision dipped 66.7% → 62.5%,** and this is expected. LAY-1 now correctly fires on
+>    `ENT_0007` and `ENT_0014`, the two accounts the generator plants *as the laundering
+>    chain's intermediaries* — but `ground_truth.json` marks only the originator guilty, so
+>    they score as false positives. This is the metric artifact **S3.1** exists to fix; the
+>    TODO's own S1.2 acceptance criterion ("≤3 clean entities") anticipated exactly this.
+>    MUL-1 meanwhile went from 1 firing on the **wrong** entity to 1 firing on the **right** one.
+> 2. **IDR-1 still fires 0×** — it is the *second* dead rule, and it is not on any day's list.
+>    `E044`, the planted identity-fan-out entity, is caught only incidentally by STR-1. The
+>    pre-submission line *"all 7 rules fire at least once"* cannot pass until this is fixed.
+>    See the new **S1.6** below.
+
+- [x] **S1.1 — Fix LAY-1 (fires 0× today)** ⏱ 1h 🔴 **HIGHEST IMPACT**
   - `backend/correlation/rules.py:827` passes `entity_df` (this entity's rows only). LAY-1 walks a multi-entity chain A→B→C→D, so `outgoing_by_entity.get(cp_entity)` is always empty and the DFS dies after hop 1.
   - Pass the **global** `all_events_df`.
   - Also replace the cache key at `rules.py:344-356`: `cache_key = id(all_events_df)` is unsound — CPython reuses `id()` after GC, so two entities can collide and silently share the wrong transaction map. Precompute `outgoing_by_entity` **once** in `run_all_rules` and pass it in.
   - ✅ *Verified achievable:* re-running with the global frame produced **10 LAY-1 firings**, e.g. `ENT_0014 → ENT_0007 → ENT_0021 → ENT_0042` in 5.9h.
   - 🏆 Earns: FR-III.a (Layering — a **named** requirement), and unblocks the CRITICAL tier which is currently unreachable.
+  - **✅ Shipped:** caller at `rules.py` now passes the global frame. The `id(all_events_df)`
+    memo is gone — new `build_outgoing_index()` builds `{entity: [outgoing transfers]}` **once**
+    in `run_all_rules` and the same object is handed to every call, so no two entities can
+    collide on a recycled `id()`. The index stores 4-field dicts instead of pandas Series
+    (the old `iterrows()` build was also the slow path). New test
+    `test_lay1_needs_the_global_frame_not_one_entity_slice` fails if the caller ever regresses.
 
-- [ ] **S1.2 — Tune LAY-1 so it doesn't over-fire** ⏱ 1h
+- [x] **S1.2 — Tune LAY-1 so it doesn't over-fire** ⏱ 1h
   - Add a **minimum amount floor** — my test run produced chains on ₹1,417 and ₹8,047 flows.
   - Narrow the shrinkage band from `0.60–0.99` toward the documented 5–15% skim.
   - Cap DFS depth (currently unbounded → worst-case exponential).
