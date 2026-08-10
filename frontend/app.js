@@ -346,7 +346,7 @@ function exitDashboard() {
 }
 
 /* ── HASH ROUTING & ANCHOR NAVIGATION ───────────────────────────── */
-const DASHBOARD_VIEWS = ['dashboard', 'upload', 'cases', 'poi', 'evidence', 'reports', 'network', 'map', 'settings'];
+const DASHBOARD_VIEWS = ['dashboard', 'upload', 'cases', 'poi', 'evidence', 'reports', 'timeline', 'network', 'map', 'settings'];
 
 function handleHashRouting() {
   const rawHash = window.location.hash.replace('#', '').trim();
