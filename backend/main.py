@@ -871,21 +871,34 @@ def get_entity_trace(entity_id: str):
     # Fetch raw event rows belonging to this entity or referenced by row_refs
     from correlation.temporal_join import _clean_row_ref
 
+    def _text(value):
+        """
+        A missing field must render as empty, not as the string "nan".
+
+        str(NaN) is "nan", and these values are displayed verbatim beside a row
+        reference in the evidence panel — an investigator should not be shown a
+        location of "nan" for a bank row that never had one.
+        """
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            return ""
+        text = str(value).strip()
+        return "" if text.lower() in ("nan", "none", "nat", "<na>") else text
+
     raw_events = []
     if all_events_df is not None and not all_events_df.empty:
         entity_events = all_events_df[all_events_df["entity_id"] == target_eid]
         for idx, row in entity_events.iterrows():
             raw_events.append({
-                "source_file": str(row.get("source_file", "unknown")),
+                "source_file": _text(row.get("source_file")) or "unknown",
                 # Normalised so the UI can match a "row_219" evidence token against
                 # the row it cites — and so no reference prints as "219.0".
                 "raw_row_ref": _clean_row_ref(row.get("raw_row_ref", idx)) or str(idx),
-                "timestamp": str(row.get("timestamp", "")),
-                "event_type": str(row.get("event_type", "")),
+                "timestamp": _text(row.get("timestamp")),
+                "event_type": _text(row.get("event_type")),
                 "amount": float(row.get("amount", 0)) if pd.notna(row.get("amount")) else 0.0,
-                "counterparty": str(row.get("counterparty", "")),
-                "location": str(row.get("location", "")),
-                "direction": str(row.get("direction", "") or ""),
+                "counterparty": _text(row.get("counterparty")),
+                "location": _text(row.get("location")),
+                "direction": _text(row.get("direction")),
             })
 
     return JSONResponse(content=clean_serializable({
