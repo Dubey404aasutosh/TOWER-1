@@ -1697,7 +1697,12 @@ function setNetworkView(kind, btn) {
   if (!networkViews || !networkViews[kind]) return;
 
   // Force a rebuild — the two graphs have different node sets entirely.
-  appState.networkInstance = null;
+  // Destroy the old vis.Network first; replacing the container's innerHTML alone
+  // leaves its canvas, listeners and physics timer alive.
+  if (appState.networkInstance) {
+    try { appState.networkInstance.destroy(); } catch (e) { /* already gone */ }
+    appState.networkInstance = null;
+  }
   initNetworkWithData(networkViews[kind]);
   renderNetworkMeta(networkViews[kind].meta, kind);
 }
@@ -1887,15 +1892,15 @@ function populateInspector(node) {
 
     body.innerHTML = `
       <div style="margin-bottom:10px;">
-        <div style="font-size:13px;font-weight:600;color:var(--text-primary);">${escapeHtml(node.name || node.entity_id)}</div>
-        <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent-primary);margin-top:2px;">${escapeHtml(node.entity_id)}</div>
+        <div style="font-size:13px;font-weight:600;color:var(--text-primary);">${escapeHTML(node.name || node.entity_id)}</div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent-primary);margin-top:2px;">${escapeHTML(node.entity_id)}</div>
       </div>
       <div style="font-size:11.5px;color:var(--text-muted);">Risk Tier</div>
-      <div style="font-size:18px;font-weight:800;font-family:var(--font-mono);color:${tierColor};">${escapeHtml(tier)}</div>
+      <div style="font-size:18px;font-weight:800;font-family:var(--font-mono);color:${tierColor};">${escapeHTML(tier)}</div>
       <div style="margin-top:10px;font-size:11.5px;color:var(--text-muted);">Rules fired</div>
       <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;">
         ${rules.length
-          ? rules.map(r => `<span class="rule-chip">${escapeHtml(r)}</span>`).join('')
+          ? rules.map(r => `<span class="rule-chip">${escapeHTML(r)}</span>`).join('')
           : '<span style="font-size:11.5px;color:var(--text-muted);">None — no rule fired on this entity</span>'}
       </div>
       ${node.ml_anomaly ? '<div style="margin-top:8px;font-size:11.5px;color:var(--accent-warning);"><i class="fa-solid fa-flask"></i> ML anomaly flagged</div>' : ''}
@@ -1904,7 +1909,7 @@ function populateInspector(node) {
         In ${inr(node.value_in)}<br>Out ${inr(node.value_out)}
       </div>
       <div style="margin-top:10px;font-size:11.5px;color:var(--text-muted);">Institution</div>
-      <div style="font-size:12px;">${escapeHtml(node.institution || 'Unknown')}</div>
+      <div style="font-size:12px;">${escapeHTML(node.institution || 'Unknown')}</div>
     `;
     return;
   }
