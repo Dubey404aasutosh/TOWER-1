@@ -639,6 +639,9 @@ function switchView(viewId, navEl) {
 
   // Lazy-init heavy views
   if (targetId === 'network') { setTimeout(initNetwork, 100); }
+  // The timeline measures its own SVG width, so it can only be laid out once its
+  // view is actually visible — same reason the network graph is built here.
+  if (targetId === 'timeline') { setTimeout(initTimeline, 80); }
   if (targetId === 'map') { setTimeout(() => { if (appState.mapInstance) appState.mapInstance.invalidateSize(); }, 200); }
 }
 
