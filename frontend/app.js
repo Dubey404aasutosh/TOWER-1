@@ -554,21 +554,9 @@ const MOCK_POIS = [
    renders an explicit empty state instead of placeholder data. */
 let EVIDENCE_FILES = [];
 
-const MOCK_TRACE = [
-  { rule: 'MUL-1', entity: 'ENT-0037', desc: '30-day dormancy → ₹2.4L inflow → 94% outflow within 8h.', ts: '2026-07-23 09:14:22' },
-  { rule: 'TCS-1', entity: 'ENT-0037', desc: 'Call to +91-9823412345 within 7 min before IMPS transfer of ₹48,900.', ts: '2026-07-23 09:14:22' },
-  { rule: 'IDR-1', entity: 'ENT-0037', desc: '1 IMEI (352xxx8621) linked to 3 distinct phone numbers.', ts: '2026-07-23 09:14:22' },
-  { rule: 'STR-1', entity: 'ENT-0041', desc: '4 outgoing transfers of ₹49,800–₹49,950 within 36h window.', ts: '2026-07-23 09:14:23' },
-  { rule: 'TCS-1', entity: 'ENT-0042', desc: 'Cell tower session 5 min before wire transfer of ₹1.2L.', ts: '2026-07-23 09:14:23' },
-  { rule: 'TCS-2', entity: 'ENT-0042', desc: 'Call to co-suspect 11 min prior to linked IMPS.', ts: '2026-07-23 09:14:23' },
-  { rule: 'STR-1', entity: 'ENT-0044', desc: '3 transfers just under ₹50,000 within 48h.', ts: '2026-07-23 09:14:24' },
-  { rule: 'LOC-1', entity: 'ENT-0045', desc: 'Cell tower location mismatch — SIM registered Ahmedabad, active Surat.', ts: '2026-07-23 09:14:24' },
-  { rule: 'MUL-1', entity: 'ENT-0272', desc: 'Account dormant 45 days → single ₹95,000 inflow → full outflow next day.', ts: '2026-07-23 09:14:25' },
-  { rule: 'TCS-2', entity: 'ENT-0014', desc: '3 calls before 3 separate NEFT transfers totalling ₹2.1L.', ts: '2026-07-23 09:14:25' },
-  { rule: 'TCS-2', entity: 'ENT-0021', desc: 'Call to suspect 9 min before ₹75,000 RTGS.', ts: '2026-07-23 09:14:25' },
-  { rule: 'TCS-2', entity: 'ENT-0032', desc: 'Call chain to 2 numbers before ₹1.8L transfer.', ts: '2026-07-23 09:14:26' },
-  { rule: 'LOC-1', entity: 'ENT-0007', desc: 'IPDR session geo mismatch with CDR tower location.', ts: '2026-07-23 09:14:26' },
-];
+/* Filled from GET /api/download-trace — the actual decision_trace.jsonl the rule
+   engine wrote this run, with its real explanations and evidence row refs. */
+let DECISION_TRACE = [];
 
 const MOCK_REPORTS = [
   { id: 'RPT-00412', title: 'ENT-0037 Forensic Report', case: 'CASE-2026-00412', created: '23 Jul 2026', status: 'SEALED', tier: 'CRITICAL' },
@@ -578,17 +566,11 @@ const MOCK_REPORTS = [
   { id: 'RPT-00298', title: 'ENT-0045 Forensic Report', case: 'CASE-2026-00298', created: '22 Jul 2026', status: 'READY', tier: 'HIGH' },
 ];
 
-const MOCK_ACTIVITY = [
-  { type: 'red', action: '<strong>CRITICAL</strong> flag on ENT-0037 — MUL-1 + TCS-1 + IDR-1 fired.', time: '12 min ago' },
-  { type: 'blue', action: 'Entity resolution complete — <strong>1,521 entities</strong> resolved from 2,372 events.', time: '14 min ago' },
-  { type: 'warn', action: '<strong>STR-1</strong> triggered — ENT-0041 structured 4 transfers under ₹50,000.', time: '18 min ago' },
-  { type: 'blue', action: 'Pipeline run completed — <strong>13 rule firings</strong> across 7 deterministic rules.', time: '20 min ago' },
-  { type: 'green', action: 'Report sealed — <strong>CASE-2026-00412</strong> forensic package Sec 65B certified.', time: '24 min ago' },
-  { type: 'warn', action: '<strong>LOC-1</strong> flagged — ENT-0045 SIM geo mismatch (Ahmedabad vs Surat).', time: '32 min ago' },
-  { type: 'muted', action: 'File ingested: <strong>cdr_export.csv</strong> — call detail records parsed.', time: '38 min ago' },
-  { type: 'muted', action: 'File ingested: <strong>ipdr_export.csv</strong> — IP sessions parsed.', time: '41 min ago' },
-  { type: 'green', action: 'API status check — all subsystems <strong>operational</strong>.', time: '1h ago' },
-];
+/* Pipeline Activity is derived from the current run (see buildActivityFeed).
+   It used to be a hardcoded list that announced a CRITICAL entity and rule
+   firings the engine had not produced — it now cannot contradict the KPI tiles
+   because both read the same response. */
+let ACTIVITY_FEED = [];
 
 /* Static rule metadata only (ids + human names). Fired/not-fired is never
    asserted here — it comes from data.rule_firings on the live run. */
@@ -682,6 +664,8 @@ function updateKPIContext(m) {
   set('kpi-cases-chip', `<i class="fa-solid fa-gavel"></i> ${n(m.total_rule_firings)} rule firings`);
   set('kpi-cases-sub', `CRITICAL + HIGH + MEDIUM tiers · ${n(m.rules_fired_count)} of 7 rules fired`);
 
+  const critEl = document.getElementById('kpi-critical-chip');
+  if (critEl) critEl.className = m.critical_count > 0 ? 'kpi-trend danger' : 'kpi-trend';
   set('kpi-critical-chip', `<i class="fa-solid fa-triangle-exclamation"></i> ${n(m.critical_count)} CRITICAL`);
   set('kpi-critical-sub', `${n(m.critical_count)} CRITICAL · ${n(m.high_count)} HIGH — rule-gated tiers`);
 
@@ -731,7 +715,13 @@ function populateDashboard() {
   const feed = document.getElementById('activity-feed');
   if (!feed) return;
   feed.innerHTML = '';
-  MOCK_ACTIVITY.forEach((a, i) => {
+  if (!ACTIVITY_FEED.length) {
+    feed.innerHTML = `<div class="tl-entry"><span class="tl-dot muted"></span><div class="tl-body">
+      <div class="tl-action">No pipeline run in this session yet — activity is generated from the live run, not stored.</div>
+      <div class="tl-time">idle</div></div></div>`;
+    return;
+  }
+  ACTIVITY_FEED.forEach((a, i) => {
     const div = document.createElement('div');
     div.className = 'tl-entry';
     div.style.animationDelay = `${i * 60}ms`;
@@ -744,6 +734,48 @@ function populateDashboard() {
     `;
     feed.appendChild(div);
   });
+}
+
+/* Builds the Pipeline Activity feed out of the run that is actually loaded.
+   Every line is traceable to a field in /api/results — no invented events,
+   no invented "12 min ago" timings. */
+function buildActivityFeed(data) {
+  const m = data.metrics || {};
+  const suspects = data.suspects || [];
+  const firings = data.rule_firings || {};
+  const items = [];
+
+  const tierDot = { CRITICAL: 'red', HIGH: 'warn', MEDIUM: 'blue' };
+  suspects
+    .filter(s => ['CRITICAL', 'HIGH', 'MEDIUM'].includes(s.risk_tier) && (s.rules_fired || []).length)
+    .slice(0, 6)
+    .forEach(s => {
+      items.push({
+        type: tierDot[s.risk_tier] || 'muted',
+        action: `<strong>${s.risk_tier}</strong> — ${s.entity_id}${s.name && s.name !== 'Unknown' ? ` (${s.name})` : ''} · ${s.rules_fired.join(' + ')} fired.`,
+        time: 'this run',
+      });
+    });
+
+  const firedList = Object.entries(firings).sort((a, b) => b[1] - a[1])
+    .map(([r, c]) => `${r}×${c}`).join(', ');
+  items.push({
+    type: 'blue',
+    action: `Rule engine — <strong>${(m.total_rule_firings || 0).toLocaleString()} firings</strong> across ${m.rules_fired_count || 0} of 7 rules${firedList ? ` (${firedList})` : ''}.`,
+    time: 'this run',
+  });
+  items.push({
+    type: 'blue',
+    action: `Entity resolution — <strong>${(m.total_entities || 0).toLocaleString()} entities</strong> resolved from ${(m.total_events || 0).toLocaleString()} events (${(m.kyc_anchored_entities || 0).toLocaleString()} KYC-anchored).`,
+    time: 'this run',
+  });
+  items.push({
+    type: m.ml_anomalies ? 'green' : 'muted',
+    action: `IsolationForest — <strong>${(m.ml_anomalies || 0).toLocaleString()} anomaly flags</strong> raised (advisory, not a risk tier).`,
+    time: 'this run',
+  });
+
+  ACTIVITY_FEED = items;
 }
 
 /* ruleFirings: { "TCS-1": 12, ... } from the live run. Cached so re-renders
@@ -935,7 +967,7 @@ function populateEvidence() {
             (e.rows_skipped ? ` · <span style="color:var(--orange);">${Number(e.rows_skipped).toLocaleString()} skipped</span>` : '')
           : (e.status === 'REFERENCE' ? 'reference input · used by entity resolution' : 'not yet ingested');
         const digest = e.sha256
-          ? `<div class="ev-hash" title="SHA-256 (hashlib): ${e.sha256}">SHA-256: ${e.sha256.slice(0, 24)}…</div>`
+          ? `<div class="ev-hash" title="SHA-256 (hashlib): ${e.sha256}">SHA-256: ${e.sha256.slice(0, 16)}…</div>`
           : `<div class="ev-hash" title="Digest unavailable">SHA-256: unavailable</div>`;
         const tag = e.modified_since_ingest
           ? `<span class="tag tag-orange" style="flex-shrink:0;" title="File on disk no longer matches the digest recorded at ingest"><i class="fa-solid fa-triangle-exclamation"></i> CHANGED</span>`
@@ -962,14 +994,48 @@ function populateEvidence() {
 
   const traceList = document.getElementById('trace-list');
   if (traceList) {
-    traceList.innerHTML = MOCK_TRACE.map(t => `
-      <div class="trace-item">
-        <span class="trace-rule">${t.rule}</span>
-        <span class="trace-entity">${t.entity}</span>
-        <span class="trace-desc">${t.desc}</span>
-        <span class="trace-ts">${t.ts}</span>
+    if (!DECISION_TRACE.length) {
+      traceList.innerHTML = `
+        <div style="padding:22px;text-align:center;color:var(--text-muted);font-size:13px;">
+          <i class="fa-solid fa-file-lines" style="display:block;font-size:20px;margin-bottom:8px;opacity:0.5;"></i>
+          decision_trace.jsonl is written by the rule engine on each run — run the pipeline to populate it.
+        </div>`;
+    } else {
+      traceList.innerHTML = DECISION_TRACE.map(t => `
+      <div class="trace-item" title="${escapeAttr(t.explanation || '')}">
+        <span class="trace-rule">${t.rule_id || '—'}</span>
+        <span class="trace-entity">${t.entity_id || '—'}</span>
+        <span class="trace-desc">${escapeHTML((t.explanation || '').length > 180 ? (t.explanation || '').slice(0, 180) + '…' : (t.explanation || ''))}${
+          (t.evidence_row_refs || []).length
+            ? ` <span style="opacity:0.7;font-family:var(--font-mono);font-size:10.5px;">[${t.evidence_row_refs.slice(0, 4).join(', ')}]</span>`
+            : ''}</span>
+        <span class="trace-ts">${(t.timestamp || '').replace('T', ' ').slice(0, 19)}</span>
       </div>
     `).join('');
+    }
+  }
+}
+
+function escapeHTML(s) {
+  return String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+function escapeAttr(s) {
+  return escapeHTML(s).replace(/"/g, '&quot;');
+}
+
+/* Reads the real decision_trace.jsonl the rule engine wrote on this run. */
+async function fetchDecisionTrace() {
+  try {
+    const res = await fetch(`${API_BASE}/api/download-trace`, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return;
+    const text = await res.text();
+    DECISION_TRACE = text.split('\n')
+      .filter(l => l.trim())
+      .map(l => { try { return JSON.parse(l); } catch { return null; } })
+      .filter(Boolean);
+    populateEvidence();
+  } catch (e) {
+    console.warn('fetchDecisionTrace err:', e);
   }
 }
 
@@ -1300,6 +1366,7 @@ async function fetchAPIStatus() {
         fetchRealResults();
         fetchVerificationSummary();
         fetchEvidenceFiles();
+        fetchDecisionTrace();
       }
     }
   } catch {
@@ -1343,6 +1410,8 @@ async function fetchRealResults() {
     animateKPICounters();
     updateKPIContext(m);
     populateRuleGrid(data.rule_firings);
+    buildActivityFeed(data);
+    populateDashboard();
 
     if (data.suspects && data.suspects.length > 0) {
       MOCK_POIS.length = 0;
@@ -1482,6 +1551,7 @@ async function openPipeline() {
   await fetchRealResults();
   await fetchAPIStatus();
   await fetchEvidenceFiles();
+  await fetchDecisionTrace();
   await fetchVerificationSummary();
 
   // Auto-close modal after 700ms and transition to Dashboard
