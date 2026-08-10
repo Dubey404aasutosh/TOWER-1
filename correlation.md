@@ -66,7 +66,7 @@ add up "risk points."
 
 | Rule ID | Name | Fires when |
 |---|---|---|
-| **IDR-1** | Identity Fan-out | One resolved entity linked to 3+ distinct accounts or 2+ IMEIs — mule/evasion signature |
+| **IDR-1** | Identity Fan-out | One resolved entity's identifiers fan out past a single subscriber's footprint: one IMEI operating 2+ MSISDNs (**HIGH** — a handset cycling SIMs), 3+ distinct accounts, or 2+ IMEIs (**MEDIUM**; two limbs together escalate to HIGH). A device/SIM swap on one number is also caught, graded by whether a transfer sits near the change — mule/evasion signature |
 | **TCS-1** | Temporal Coincidence | A call AND an active IP session both fall within window W of a transaction |
 | **TCS-2** | Call-Then-Transfer | A call to a specific B-party occurs 1-15 min before a transfer to a linked account/VPA of that number |
 | **STR-1** | Structuring | 3+ transactions just under a reporting threshold (e.g. ₹49,000 near ₹50,000) within 24-48 hrs |

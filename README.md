@@ -97,7 +97,7 @@ Unlike opaque "black-box" AI systems, E-RAKSHAK uses named, explainable forensic
 2. **`TCS-1` (Temporal Coincidence)**: A transaction occurs while the entity has **both** an active phone call and an IP session within the $W$-minute correlation window.
 3. **`TCS-2` (Pre-Transfer Call)**: A phone call to a co-suspect occurs 1–15 minutes before an IMPS/NEFT/RTGS transaction.
 4. **`STR-1` (Structuring / Smurfing)**: Multiple outgoing transfers clustered just below reporting thresholds (₹49,000–₹49,900) within 24–48 hours.
-5. **`IDR-1` (Identity Fan-out / SIM Swap)**: Concurrent change of both IMEI and IMSI on the same MSISDN, or single identifier change near a transaction.
+5. **`IDR-1` (Identity Fan-out)**: One identity spread across more identifiers than a single subscriber holds — a single IMEI operating 2+ mobile numbers (graded HIGH), 3+ distinct bank accounts, or 2+ IMEIs. Also catches a device/SIM swap on one number, graded by whether a transfer occurs near the change.
 6. **`LOC-1` (Geo-Improbable Location)**: Active cell tower location during call/session differs significantly from KYC registered city.
 7. **`LAY-1` (Layering & Circular Flow)**: Rapid fund pass-through across $\ge 3$ intermediate accounts returning to suspect cluster.
 
