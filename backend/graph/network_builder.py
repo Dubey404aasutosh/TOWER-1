@@ -92,6 +92,21 @@ def build_network_graph(all_events_df, scored_entities, entities):
     # instead of an iterrows() loop over every event row.
     entity_institutions = {}
     entity_sources = {}
+    # Entity -> the cities it was seen operating from. Drives the city filter in the
+    # network view; without it "filter by location" has nothing to filter on.
+    entity_cities = {}
+    if not all_events_df.empty and 'location' in all_events_df.columns:
+        loc_df = all_events_df[['entity_id', 'location']].dropna()
+        loc_df = loc_df[loc_df['entity_id'] != '']
+        if not loc_df.empty:
+            city_of = {loc: _location_to_city(loc)
+                       for loc in loc_df['location'].astype(str).unique()}
+            loc_df = loc_df.assign(city=loc_df['location'].astype(str).map(city_of))
+            loc_df = loc_df[loc_df['city'].notna()]
+            if not loc_df.empty:
+                entity_cities = loc_df.groupby('entity_id')['city'].agg(
+                    lambda s: sorted(set(s))).to_dict()
+
     if not all_events_df.empty and 'source_file' in all_events_df.columns:
         sf_df = all_events_df[['entity_id', 'source_file']].dropna()
         sf_df = sf_df[sf_df['entity_id'] != '']
