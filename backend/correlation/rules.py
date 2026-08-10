@@ -550,6 +550,10 @@ def check_lay1(entity_id, all_events_df, entity_map=None, min_hops=3, max_hours=
     evidence.append(f"hops:{len(chain) - 1}")
     if skims:
         evidence.append("skim_pct:" + ",".join(f"{s:.1f}" for s in skims))
+    # The path itself is part of the finding, so it is emitted as structured
+    # evidence rather than only inside the prose. The money-flow graph reads this
+    # to light up exactly the hops that were walked.
+    evidence.append("chain:" + ">".join(chain))
 
     _append_trace(entity_id, "LAY-1", evidence, explanation)
     return True, explanation, evidence
