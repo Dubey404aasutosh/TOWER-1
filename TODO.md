@@ -258,23 +258,63 @@ Restores advertised functionality. Every item is a defect fix, not a feature.
 
 These are requirement lines currently scoring near zero. Backend and frontend tracks are parallelizable.
 
+> **Re-verified against the tree after Day 1** (line numbers moved — `app.js` grew ~195 lines,
+> `main.py` ~320). Every "0 references" claim below was re-checked, not carried over.
+> Day 1 left three assets that make these cheaper than the original estimates:
+> **(a)** money-flow nodes already carry `risk_tier`, `rules_fired`, `rule_severities`,
+> `value_in`, `value_out`, `institution`, and edges carry `amount`, `count`, `edge_type`,
+> `edge_class` — S2.2 is a filter over fields that already exist, not a new API;
+> **(b)** `networkViews` / `activeNetworkView` / `setNetworkView()` already give you a
+> per-view render path to hang filters off;
+> **(c)** `populateInspector()` already renders real entity data on node click, so S2.3 is
+> now only the *evidence rows*, not the whole panel.
+
 - [ ] **S2.1 — Unified timeline view** ⏱ 4h 🔴 **PS centrepiece**
-  - FR-II.a. Today: `build_unified_timeline()` has **0 references**, `create_timeline_plotly()` is imported and never invoked, and the report's "timeline" is a plain 6-column table. **No timeline exists anywhere in the product.**
+  - FR-II.a. Confirmed still true after Day 1: `build_unified_timeline()` is defined at
+    `backend/correlation/temporal_join.py:113` and has **0 call sites**;
+    `create_timeline_plotly()` is defined at `backend/graph/network_builder.py:444`, imported at
+    `pipeline.py:23` and `main.py:904`, and passed as `create_timeline_fn=` at `pipeline.py:228`
+    — but **never invoked**, because `forensic_report.py:540` hardcodes `timeline_fig=None`.
+    The report's "timeline" is still a plain 6-column table. **No timeline exists in the product.**
   - Build: per-entity, three lanes (transaction / call / IP session) on one time axis, marker size by amount, click → source row.
   - Overlay the correlation window so a TCS-1 firing is *visually obvious* — this is the "decisive evidence lives at the intersection" moment from `solution.md:16`. It is the single most demo-able screen you can build.
+  - 💡 **Demo the entity Day 1 proved out:** `ENT_0042` has the full story on one axis —
+    call, IP session, then transfer, minutes apart, four times around a closed loop.
+  - 🔗 Shares its blocker with **S2.4** (both need a figure past `forensic_report.py:540`); doing
+    S2.4's one-line unhardcode first means S2.1's figure lands in the `.docx` for free.
   - 🏆 Earns: FR-II.a + evaluation criterion #4.
 
 - [ ] **S2.2 — Filters: amount, time window, location** ⏱ 3h 🔴
-  - FR-IV.b is at **~10%**. `frontend/app.js:1560` `applyNetworkFilters()` is literally `{ }`; `app.js:1555` only toggles a CSS class. Four filter buttons, a search box and a risk dropdown are wired to no-ops.
-  - Implement: **amount range**, **time-window slider** (the API already accepts `window_minutes` — no UI control exists), **location/city**, entity search.
+  - FR-IV.b is at **~10%**. Re-checked line numbers: `applyNetworkFilters()` is literally `{ }` at
+    **`frontend/app.js:1894`**; `applyNetworkFilter(type, btn)` at **`app.js:1889`** only toggles a
+    CSS class. The four buttons are at `dashboard.html:487-490`.
+  - ⚠️ **Worse than originally recorded:** `app.js:1877` wires a listener to
+    `#network-risk-filter`, but **that element does not exist anywhere in `dashboard.html`**. The
+    risk dropdown is not a no-op — it was never built. Add the control, don't just wire it.
+  - Implement: **amount range** (use `edge.amount`, already on every transaction edge),
+    **time-window slider** (the API already accepts `window_minutes` — still no UI control),
+    **location/city**, entity search (`#network-search-input` exists and is wired to the no-op).
   - Wire the four network filter buttons to actually subset the vis.js DataSet.
+  - ⚠️ **Scope changed by S1.4:** there are now two views, and the buttons are not
+    view-agnostic — "Phones" / "Bank Accounts" are meaningless in the money-flow view (its nodes
+    are entities), and "Critical Only" is meaningless in the identity view (its nodes are raw
+    identifiers with no tier). Give each view its own filter set, or the buttons will lie.
   - 🏆 Earns: FR-IV.b — currently your lowest-scoring line.
 
-- [ ] **S2.3 — Drill-down to evidence (endpoint already exists)** ⏱ 2h
-  - `/api/entity/{id}/trace` returns identifiers + real `decision_trace` entries + raw evidence rows — and is **never called**.
-  - Wire it into: (a) node click in the network inspector, (b) the Evidence Vault "Decision Trace Log" which currently renders 13 invented `MOCK_TRACE` entries.
-  - Also replace `MOCK_EVIDENCE` with the real ingested file list (name, rows parsed, rows skipped, real hash from S0.1).
-  - 🏆 Earns: FR-IV.a drill-down + kills the largest remaining block of fake data.
+- [ ] **S2.3 — Drill-down to evidence (endpoint already exists)** ⏱ ~1h *(was 2h — Day 1 did part of it)*
+  - `/api/entity/{id}/trace` (now **`backend/main.py:756`**) returns identifiers + real
+    `decision_trace` entries + raw evidence rows, and is still called from **nowhere** in the
+    frontend (`grep 'api/entity' frontend/app.js` → no hits).
+  - ✅ *Already done, don't redo:* **(b)** the Evidence Vault trace log and `MOCK_EVIDENCE` were
+    replaced with real data in **Day 0**. **(a)** is half-done — `populateInspector()` now renders
+    the real tier, the rules that fired, their severities, value in/out and institution straight
+    off the node payload.
+  - **What actually remains:** fetch `/api/entity/{id}/trace` on node click and render the
+    **evidence rows** — the source lines behind each firing — under the inspector's rule chips.
+    That is the click-through that answers *"why this score?"* with a row reference.
+  - 💡 LAY-1 evidence already carries structured tokens (`cycle:`, `hops:`, `skim_pct:`,
+    `chain:`) alongside its `row_` refs — render the row refs, and treat the rest as metadata.
+  - 🏆 Earns: FR-IV.a drill-down.
 
 - [ ] **S2.4 — Embed charts in the forensic report** ⏱ 2h
   - `backend/report/forensic_report.py:536-541` accepts `create_timeline_fn` / `create_network_fn` then hardcodes `timeline_fig=None, network_fig=None`. **Every report prints "[Identity graph visual available in interactive portal]"**.
