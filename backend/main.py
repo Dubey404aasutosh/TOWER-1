@@ -594,6 +594,15 @@ def trigger_pipeline(window_minutes: int = Form(10)):
         # last dataset's report for this dataset's entity. Clear first, always.
         clear_old_reports()
 
+        # Release the previous run before building the next one. STATE holds a full
+        # events DataFrame, an enriched-transaction frame and two graphs; keeping
+        # them alive while a second set is constructed doubles peak footprint for no
+        # benefit. It also means a failed re-run cannot leave the API serving the
+        # previous dataset's results as if they were current.
+        STATE["last_results"] = None
+        STATE["pipeline_run"] = False
+        gc.collect()
+
         # Reports are generated on demand by /api/download-report, not in bulk here.
         # Charting all 8 HIGH/CRITICAL entities inline measured ~17 s on top of an
         # 8 s pipeline, against a "runs in seconds" requirement — and nothing reads
