@@ -1700,8 +1700,8 @@ function initTimeline() {
   // Offer the entities the engine actually escalated. REPORTS is tier-sorted, so
   // the default is the highest-risk entity of whatever dataset is loaded — no
   // entity id is hardcoded here.
-  const options = REPORTS.length
-    ? REPORTS
+  let options = REPORTS.length
+    ? REPORTS.slice()
     : (appState.results?.suspects || [])
       .filter(s => s.risk_tier !== 'LOW')
       .map(s => ({ entityId: s.entity_id, name: s.name, tier: s.risk_tier, rules: s.rules_fired || [] }));
@@ -1713,6 +1713,18 @@ function initTimeline() {
   }
 
   const current = timelineState.entityId;
+  // An entity opened from the graph may be MEDIUM tier and therefore absent from
+  // the flagged list. Add it rather than silently loading a different entity.
+  if (current && !options.some(o => o.entityId === current)) {
+    const s = (appState.results?.suspects || []).find(x => x.entity_id === current);
+    options = [{
+      entityId: current,
+      name: s?.name || '',
+      tier: s?.risk_tier || 'LOW',
+      rules: s?.rules_fired || [],
+    }, ...options];
+  }
+
   select.innerHTML = options.map(o =>
     `<option value="${escapeAttr(o.entityId)}" ${o.entityId === current ? 'selected' : ''}>
        ${escapeHTML(o.entityId)} — ${escapeHTML(o.tier)}${o.name && o.name !== 'Unnamed entity' ? ' · ' + escapeHTML(o.name) : ''}
