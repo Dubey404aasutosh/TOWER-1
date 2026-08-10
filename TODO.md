@@ -456,6 +456,24 @@ These are requirement lines currently scoring near zero. Backend and frontend tr
   - 💡 LAY-1 evidence already carries structured tokens (`cycle:`, `hops:`, `skim_pct:`,
     `chain:`) alongside its `row_` refs — render the row refs, and treat the rest as metadata.
   - 🏆 Earns: FR-IV.a drill-down.
+  - **✅ Shipped.** Clicking a node now fetches `/api/entity/{id}/trace` (cached, with a request
+    guard so a slow response for one entity cannot paint under another entity's heading) and
+    renders, under each rule chip: the rule's explanation, its structured metadata as chips, and
+    **every source row it cited**, resolved to the actual line — timestamp, direction, amount,
+    counterparty, location.
+  - **This is the screen that answers "why this score?" with a file and a row number.** On
+    `ENT_0042`, TCS-1 cites three rows in three different files —
+    `bank row 215` (10:12, −₹2,75,659), `cdr row 1016` (10:06, call to 9533357554),
+    `ipdr row 545` (10:07, session to 103.25.193.40). LAY-1 renders its `cycle:true`, `hops:4`,
+    `skim_pct:7.9,10.1,12.0` and `chain:` tokens as metadata beside the row refs, exactly as the
+    note above suggested.
+  - A row cited by a rule but belonging to a **counterparty's** file is labelled
+    *"referenced — not in this entity's rows"* rather than silently dropped or faked.
+  - Two display defects fixed here: references printed as **`cdr_row_1018.0`** (a float artifact
+    from `merge_asof`, now normalised at the source in `check_tcs1` so `decision_trace.jsonl`
+    itself is clean), and missing fields rendered as the literal string **`nan`**.
+  - Also adds an **"Open timeline"** button, so the demo can go from the money-flow chain
+    (step 4) straight into that entity's timeline (step 5) without hunting through a dropdown.
 
 - [ ] **S2.4 — Embed charts in the forensic report** ⏱ 2h budgeted · likely ~20m of code 🥇 **do this first on Day 2**
   - Re-checked: `backend/report/forensic_report.py:525` accepts `create_timeline_fn` /
