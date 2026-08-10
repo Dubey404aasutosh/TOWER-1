@@ -55,11 +55,17 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
+#: Reports whose name starts with this are the committed sample deliverables, not
+#: output of a run. Wiping them on the first pipeline execution would delete a
+#: checked-in artefact from a fresh clone, so every clearing path skips them.
+SAMPLE_REPORT_PREFIX = "sample_"
+
+
 def clear_old_reports():
-    """Remove all .docx reports from previous pipeline runs."""
+    """Remove .docx reports from previous pipeline runs, keeping committed samples."""
     if REPORTS_DIR.exists():
         for f in REPORTS_DIR.iterdir():
-            if f.is_file() and f.suffix == ".docx":
+            if f.is_file() and f.suffix == ".docx" and not f.name.startswith(SAMPLE_REPORT_PREFIX):
                 f.unlink()
 
 
