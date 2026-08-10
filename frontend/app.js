@@ -1873,6 +1873,42 @@ function applyNetworkFilters() { }
 function populateInspector(node) {
   const body = document.getElementById('inspector-body');
   if (!body) return;
+
+  /* Money-flow nodes are resolved entities and carry their own real data — tier,
+     the rules that actually fired, and the value that moved through them. Render
+     that directly rather than looking the id up in a mock table. */
+  if (node && node.risk_tier && node.entity_id) {
+    const tier = node.risk_tier;
+    const tierColor = tier === 'CRITICAL' ? 'var(--accent-danger)'
+      : tier === 'HIGH' ? 'var(--accent-warning)'
+        : tier === 'MEDIUM' ? 'var(--accent-primary)' : 'var(--accent-success)';
+    const rules = node.rules_fired || [];
+    const inr = v => '₹' + (Number(v) || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+
+    body.innerHTML = `
+      <div style="margin-bottom:10px;">
+        <div style="font-size:13px;font-weight:600;color:var(--text-primary);">${escapeHtml(node.name || node.entity_id)}</div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent-primary);margin-top:2px;">${escapeHtml(node.entity_id)}</div>
+      </div>
+      <div style="font-size:11.5px;color:var(--text-muted);">Risk Tier</div>
+      <div style="font-size:18px;font-weight:800;font-family:var(--font-mono);color:${tierColor};">${escapeHtml(tier)}</div>
+      <div style="margin-top:10px;font-size:11.5px;color:var(--text-muted);">Rules fired</div>
+      <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;">
+        ${rules.length
+          ? rules.map(r => `<span class="rule-chip">${escapeHtml(r)}</span>`).join('')
+          : '<span style="font-size:11.5px;color:var(--text-muted);">None — no rule fired on this entity</span>'}
+      </div>
+      ${node.ml_anomaly ? '<div style="margin-top:8px;font-size:11.5px;color:var(--accent-warning);"><i class="fa-solid fa-flask"></i> ML anomaly flagged</div>' : ''}
+      <div style="margin-top:12px;font-size:11.5px;color:var(--text-muted);">Value through this entity</div>
+      <div style="font-family:var(--font-mono);font-size:12px;margin-top:2px;">
+        In ${inr(node.value_in)}<br>Out ${inr(node.value_out)}
+      </div>
+      <div style="margin-top:10px;font-size:11.5px;color:var(--text-muted);">Institution</div>
+      <div style="font-size:12px;">${escapeHtml(node.institution || 'Unknown')}</div>
+    `;
+    return;
+  }
+
   const poi = MOCK_POIS.find(p => p.id === (node.entity_id || node.id));
   if (poi) {
     body.innerHTML = `
