@@ -817,18 +817,23 @@ def get_entity_trace(entity_id: str):
             })
 
     # Fetch raw event rows belonging to this entity or referenced by row_refs
+    from correlation.temporal_join import _clean_row_ref
+
     raw_events = []
     if all_events_df is not None and not all_events_df.empty:
         entity_events = all_events_df[all_events_df["entity_id"] == target_eid]
         for idx, row in entity_events.iterrows():
             raw_events.append({
                 "source_file": str(row.get("source_file", "unknown")),
-                "raw_row_ref": str(row.get("raw_row_ref", idx)),
+                # Normalised so the UI can match a "row_219" evidence token against
+                # the row it cites — and so no reference prints as "219.0".
+                "raw_row_ref": _clean_row_ref(row.get("raw_row_ref", idx)) or str(idx),
                 "timestamp": str(row.get("timestamp", "")),
                 "event_type": str(row.get("event_type", "")),
                 "amount": float(row.get("amount", 0)) if pd.notna(row.get("amount")) else 0.0,
                 "counterparty": str(row.get("counterparty", "")),
                 "location": str(row.get("location", "")),
+                "direction": str(row.get("direction", "") or ""),
             })
 
     return JSONResponse(content=clean_serializable({
