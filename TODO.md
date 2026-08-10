@@ -316,10 +316,20 @@ These are requirement lines currently scoring near zero. Backend and frontend tr
     `chain:`) alongside its `row_` refs — render the row refs, and treat the rest as metadata.
   - 🏆 Earns: FR-IV.a drill-down.
 
-- [ ] **S2.4 — Embed charts in the forensic report** ⏱ 2h
-  - `backend/report/forensic_report.py:536-541` accepts `create_timeline_fn` / `create_network_fn` then hardcodes `timeline_fig=None, network_fig=None`. **Every report prints "[Identity graph visual available in interactive portal]"**.
+- [ ] **S2.4 — Embed charts in the forensic report** ⏱ 2h 🥇 **do this first on Day 2**
+  - Re-checked: `backend/report/forensic_report.py:525` accepts `create_timeline_fn` /
+    `create_network_fn`, then **`:540` hardcodes `timeline_fig=None, network_fig=None`** — so the
+    functions are received and discarded. Every report still prints
+    *"[Identity graph visual available in interactive portal]"*.
+  - 💡 **The receiving end is already written:** `forensic_report.py:143-146` renders a figure via
+    `network_fig.to_image(format="png", ...)` and inserts it. Nothing there needs building — the
+    figures just never arrive. This is closer to a one-line unhardcode than a 2h feature, which
+    is why it is worth doing before S2.1 rather than after.
   - `kaleido` is already in `requirements.txt` purely for this and is never exercised.
   - FR-IV.c explicitly says *"with charts and the evidentiary timeline"*.
+  - ✅ **Day 1 bonus:** `create_network_plotly` now draws off the de-duplicated graph, so an
+    embedded money-flow chart will show ₹275,659 for the layering hop — not the doubled
+    ₹551,318 it would have printed into a court exhibit yesterday.
   - ✅ *Done when:* the sample `.docx` contains a timeline image and a money-flow image.
 
 ---
