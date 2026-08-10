@@ -76,26 +76,20 @@ def _marker_size(amount, amounts):
     return 28.0 + 170.0 * max(0.0, min(ratio, 1.0))
 
 
-def render_timeline_png(payload, title=None, width_in=7.4, height_in=3.1):
+def _pick_focus_correlation(payload):
     """
-    Draw one entity's unified timeline: three lanes on a shared time axis with the
-    temporal correlation windows shaded behind the markers.
-
-    Args:
-        payload: output of correlation.temporal_join.build_timeline_payload
-        title: optional heading drawn above the axes
-
-    Returns:
-        PNG bytes, or None if the entity has nothing to plot.
+    Choose the correlation worth zooming into: a TCS-1 window (call AND session
+    around the same transfer) beats a single-signal window, and among equals the
+    largest transfer wins.
     """
-    events = (payload or {}).get("events") or []
-    if not events:
+    bands = payload.get("correlations") or []
+    if not bands:
         return None
+    return max(bands, key=lambda b: (b.get("kind") == "tcs1", b.get("amount") or 0))
 
-    fig, ax = plt.subplots(figsize=(width_in, height_in))
 
-    # ---- correlation windows, drawn first so markers sit on top ----
-    drawn_window_label = False
+def _draw_timeline_axis(ax, payload, txn_amounts, annotate=False):
+    """Draw the correlation bands and the three event lanes onto one axis."""
     for band in (payload.get("correlations") or [])[:200]:
         try:
             start = pd.Timestamp(band["start"])
@@ -103,22 +97,13 @@ def render_timeline_png(payload, title=None, width_in=7.4, height_in=3.1):
         except (TypeError, ValueError, KeyError):
             continue
         is_tcs1 = band.get("kind") == "tcs1"
-        ax.axvspan(
-            start, end,
-            color=WINDOW,
-            alpha=0.26 if is_tcs1 else 0.12,
-            lw=0,
-            zorder=1,
-            label=None if drawn_window_label else "_nolegend_",
-        )
+        ax.axvspan(start, end, color=WINDOW, alpha=0.30 if is_tcs1 else 0.14,
+                   lw=0, zorder=1)
         if is_tcs1:
             ax.axvline(pd.Timestamp(band["centre"]), color=WINDOW, lw=0.9,
                        alpha=0.75, zorder=2)
-        drawn_window_label = True
 
-    txn_amounts = [e["amount"] for e in events
-                   if e["lane"] == "transaction" and e.get("amount")]
-
+    events = payload.get("events") or []
     lanes_present = set()
     for lane in ("transaction", "call", "ip_session"):
         subset = [e for e in events if e["lane"] == lane]
@@ -135,12 +120,9 @@ def render_timeline_png(payload, title=None, width_in=7.4, height_in=3.1):
             if lane == "transaction":
                 sizes.append(_marker_size(event.get("amount"), txn_amounts))
                 colours.append(CREDIT if event.get("direction") == "credit" else DEBIT)
-            elif lane == "call":
-                sizes.append(46)
-                colours.append(CALL)
             else:
                 sizes.append(46)
-                colours.append(SESSION)
+                colours.append(CALL if lane == "call" else SESSION)
             # A row a rule actually cited gets a dark ring — that is the difference
             # between "an event happened" and "this is the evidence".
             if event.get("cited"):
@@ -165,21 +147,92 @@ def render_timeline_png(payload, title=None, width_in=7.4, height_in=3.1):
             ax.plot([start, end], [LANE_Y["ip_session"]] * 2,
                     color=SESSION, lw=2.4, alpha=0.45, solid_capstyle="round", zorder=3)
 
+    if annotate:
+        for event in events:
+            if event["lane"] == "transaction" and event.get("amount"):
+                try:
+                    ax.annotate(f"₹{event['amount']:,.0f}",
+                                (pd.Timestamp(event["t"]), LANE_Y["transaction"]),
+                                textcoords="offset points", xytext=(0, 13),
+                                ha="center", fontsize=6.4, color=INK, fontweight="bold",
+                                zorder=7)
+                except (TypeError, ValueError):
+                    pass
+
     ordered = [l for l in ("ip_session", "call", "transaction") if l in lanes_present]
     ax.set_yticks([LANE_Y[l] for l in ordered])
-    ax.set_yticklabels([LANE_LABEL[l] for l in ordered], fontsize=8.5, color=INK)
-    ax.set_ylim(-0.6, 2.6)
-
+    ax.set_yticklabels([LANE_LABEL[l] for l in ordered], fontsize=8, color=INK)
+    ax.set_ylim(-0.6, 2.75)
     ax.grid(axis="x", color=GRID, lw=0.7, zorder=0)
     ax.set_axisbelow(True)
     for side in ("top", "right", "left"):
         ax.spines[side].set_visible(False)
     ax.spines["bottom"].set_color(GRID)
-    ax.tick_params(axis="x", labelsize=7.5, colors=MUTED, length=3)
+    ax.tick_params(axis="x", labelsize=7, colors=MUTED, length=3)
     ax.tick_params(axis="y", length=0)
+    return lanes_present
 
+
+def render_timeline_png(payload, title=None, width_in=7.4, height_in=3.1):
+    """
+    Draw one entity's unified timeline: three lanes on a shared time axis with the
+    temporal correlation windows shaded behind the markers.
+
+    When a correlation exists, a second panel zooms into it. At full range the
+    dataset spans about six weeks, and a +/-10 minute window is roughly 0.02% of
+    the axis — the exact moment the case turns on renders as a hairline. The zoom
+    panel is what makes "the call, the session and the transfer are minutes apart"
+    something a reader can see instead of something the text asserts.
+
+    Args:
+        payload: output of correlation.temporal_join.build_timeline_payload
+        title: optional heading drawn above the axes
+
+    Returns:
+        PNG bytes, or None if the entity has nothing to plot.
+    """
+    events = (payload or {}).get("events") or []
+    if not events:
+        return None
+
+    txn_amounts = [e["amount"] for e in events
+                   if e["lane"] == "transaction" and e.get("amount")]
+
+    focus = _pick_focus_correlation(payload)
+    window_minutes = payload.get("window_minutes", 10)
+
+    if focus:
+        fig, (ax, ax_zoom) = plt.subplots(
+            2, 1, figsize=(width_in, height_in * 1.62),
+            gridspec_kw={"height_ratios": [1.0, 0.92], "hspace": 0.62},
+        )
+    else:
+        fig, ax = plt.subplots(figsize=(width_in, height_in))
+        ax_zoom = None
+
+    lanes_present = _draw_timeline_axis(ax, payload, txn_amounts)
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%d %b\n%H:%M"))
-    fig.autofmt_xdate(rotation=0, ha="center")
+
+    if ax_zoom is not None:
+        centre = pd.Timestamp(focus["centre"])
+        span = pd.Timedelta(minutes=max(window_minutes, 1) * 3)
+        lo, hi = centre - span, centre + span
+
+        # Mark the zoomed slice on the full-range panel so the reader can see
+        # where in the six weeks this moment sits.
+        ax.axvline(lo, color=INK, lw=0.7, ls=":", alpha=0.55, zorder=6)
+        ax.axvline(hi, color=INK, lw=0.7, ls=":", alpha=0.55, zorder=6)
+
+        _draw_timeline_axis(ax_zoom, payload, txn_amounts, annotate=True)
+        ax_zoom.set_xlim(lo, hi)
+        ax_zoom.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+        ax_zoom.set_title(
+            f"Correlation window — {centre.strftime('%d %b %Y')} · "
+            f"±{window_minutes} min around the flagged transfer · {focus.get('note', '')}",
+            fontsize=7.8, color=INK, pad=5, loc="left",
+        )
+
+    axis_for_legend = ax_zoom if ax_zoom is not None else ax
 
     legend_items = []
     if "transaction" in lanes_present:
