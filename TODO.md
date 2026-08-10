@@ -9,6 +9,12 @@ pipeline **9.1s @ 2,404 events** · PDF parsing **207/208 rows with the 1 loss r
 Precision is the one number still under target — see the Day 1 note below: the shortfall is a
 **ground-truth labelling artifact that S3.1 fixes**, not a detection regression.
 
+**After Day 2 (measured):** recall **100%** / precision **62.5%** / F1 **76.9%** · **CRITICAL = 5** ·
+**all 7 rules fire — no dead rules** · pipeline **8.16s @ 2,404 events** · `pytest backend/tests/` **54 passed** ·
+timeline view live · network filters live · evidence drill-down live · `.docx` ships with embedded charts.
+**All five Day 2 items are done.** Precision is unchanged and still the S3.1 labelling artifact —
+IDR-1 added a firing on an entity that was already flagged, so it could not move the number either way.
+
 > **The core problem is not missing code — it is disconnected code.** The money-flow graph, the trace endpoint, the chart renderers, and the progress callback are all already built and simply never called. Most P0 items below are wiring, not algorithms.
 
 ---
