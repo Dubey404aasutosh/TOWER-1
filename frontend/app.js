@@ -1911,12 +1911,255 @@ function initNetworkWithData(data) {
   }
 }
 
-function applyNetworkFilter(type, btn) {
-  document.querySelectorAll('#view-network .filter-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+/* ── NETWORK FILTERS (S2.2) ───────────────────────────────────────────
+   FR-IV.b. Every control below subsets the vis.js DataSets against a field the
+   backend actually emits — edge.amount, edge.t_start/t_end, node.cities,
+   node.rules_fired, node.risk_tier. Nothing here is decorative: if a facet is
+   empty for the active graph, its control is not rendered at all.
+
+   Filtering hides rather than removes, so the layout stays stable and clearing a
+   filter restores the graph instantly without re-running physics. */
+
+const networkFilterState = {
+  quick: 'all', risk: 'all', rule: 'all', city: 'all', idType: 'all',
+  amountMin: null, amountMax: null, timeFrom: null, timeTo: null, search: '',
+};
+
+function resetNetworkFilterState() {
+  Object.assign(networkFilterState, {
+    quick: 'all', risk: 'all', rule: 'all', city: 'all', idType: 'all',
+    amountMin: null, amountMax: null, timeFrom: null, timeTo: null, search: '',
+  });
 }
 
-function applyNetworkFilters() { }
+const NETWORK_QUICK_FILTERS = {
+  money_flow: [
+    ['all', 'All entities'],
+    ['flagged', 'Flagged only'],
+    ['layering', 'Layering chain'],
+    ['money', 'Transfers only'],
+  ],
+  identity: [['all', 'All identifiers']],
+};
+
+function buildNetworkQuickFilters(kind, facets) {
+  const host = document.getElementById('network-quick-filters');
+  if (!host) return;
+  let defs = (NETWORK_QUICK_FILTERS[kind] || [['all', 'All']]).slice();
+  if (kind === 'identity') {
+    // Identity nodes are raw identifiers, so its quick filters are the identifier
+    // types actually present in this run.
+    (facets.id_types || []).forEach(t => defs.push([`type:${t}`, t.charAt(0).toUpperCase() + t.slice(1)]));
+  }
+  host.innerHTML = defs.map(([key, label]) =>
+    `<button class="filter-btn ${networkFilterState.quick === key ? 'active' : ''}"
+             data-quick="${escapeAttr(key)}"
+             onclick="applyNetworkFilter('${escapeAttr(key)}',this)">${escapeHTML(label)}</button>`
+  ).join('');
+}
+
+function buildNetworkFilterBar(kind, facets) {
+  const host = document.getElementById('network-filter-bar');
+  if (!host) return;
+  facets = facets || {};
+
+  const controls = [];
+
+  if (kind === 'money_flow') {
+    controls.push(`
+      <label class="nf-field"><span>Risk tier</span>
+        <select id="network-risk-filter">
+          <option value="all">All tiers</option>
+          <option value="CRITICAL">CRITICAL</option>
+          <option value="HIGH">HIGH and above</option>
+          <option value="MEDIUM">MEDIUM and above</option>
+        </select>
+      </label>`);
+
+    if ((facets.rules || []).length) {
+      controls.push(`
+        <label class="nf-field"><span>Rule fired</span>
+          <select id="network-rule-filter">
+            <option value="all">Any rule</option>
+            ${facets.rules.map(r => `<option value="${escapeAttr(r)}">${escapeHTML(r)}</option>`).join('')}
+          </select>
+        </label>`);
+    }
+
+    if (facets.amount_max > 0) {
+      const max = Math.ceil(facets.amount_max);
+      controls.push(`
+        <label class="nf-field nf-wide"><span>Transfer amount ≥ <b id="nf-amount-label">₹0</b></span>
+          <input type="range" id="network-amount-min" min="0" max="${max}" step="${Math.max(1, Math.round(max / 500))}" value="0">
+        </label>`);
+    }
+
+    if (facets.time_min && facets.time_max) {
+      const lo = String(facets.time_min).slice(0, 10);
+      const hi = String(facets.time_max).slice(0, 10);
+      controls.push(`
+        <label class="nf-field"><span>From</span>
+          <input type="date" id="network-time-from" min="${lo}" max="${hi}" value="${lo}"></label>
+        <label class="nf-field"><span>To</span>
+          <input type="date" id="network-time-to" min="${lo}" max="${hi}" value="${hi}"></label>`);
+    }
+
+    if ((facets.cities || []).length) {
+      controls.push(`
+        <label class="nf-field"><span>Location</span>
+          <select id="network-city-filter">
+            <option value="all">All cities</option>
+            ${facets.cities.map(c => `<option value="${escapeAttr(c)}">${escapeHTML(c)}</option>`).join('')}
+          </select>
+        </label>`);
+    }
+  }
+
+  controls.push(`<button class="btn btn-ghost btn-sm" id="network-clear-filters">
+      <i class="fa-solid fa-filter-circle-xmark"></i> Clear filters</button>`);
+  controls.push(`<span class="nf-status" id="network-filter-status"></span>`);
+
+  host.innerHTML = controls.join('');
+
+  const on = (id, evt, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener(evt, fn);
+  };
+  on('network-risk-filter', 'change', e => { networkFilterState.risk = e.target.value; applyNetworkFilters(); });
+  on('network-rule-filter', 'change', e => { networkFilterState.rule = e.target.value; applyNetworkFilters(); });
+  on('network-city-filter', 'change', e => { networkFilterState.city = e.target.value; applyNetworkFilters(); });
+  on('network-amount-min', 'input', e => {
+    networkFilterState.amountMin = Number(e.target.value) || 0;
+    const label = document.getElementById('nf-amount-label');
+    if (label) label.textContent = '₹' + Number(e.target.value || 0).toLocaleString('en-IN');
+    applyNetworkFilters();
+  });
+  on('network-time-from', 'change', e => { networkFilterState.timeFrom = e.target.value || null; applyNetworkFilters(); });
+  on('network-time-to', 'change', e => { networkFilterState.timeTo = e.target.value || null; applyNetworkFilters(); });
+  on('network-clear-filters', 'click', () => {
+    resetNetworkFilterState();
+    const search = document.getElementById('network-search-input');
+    if (search) search.value = '';
+    buildNetworkQuickFilters(kind, facets);
+    buildNetworkFilterBar(kind, facets);
+    applyNetworkFilters();
+  });
+}
+
+function applyNetworkFilter(type, btn) {
+  networkFilterState.quick = type;
+  document.querySelectorAll('#network-quick-filters .filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  applyNetworkFilters();
+}
+
+const TIER_AT_LEAST = {
+  CRITICAL: ['CRITICAL'],
+  HIGH: ['CRITICAL', 'HIGH'],
+  MEDIUM: ['CRITICAL', 'HIGH', 'MEDIUM'],
+};
+
+function applyNetworkFilters() {
+  const visNodes = networkVisData.nodes;
+  const visEdges = networkVisData.edges;
+  if (!visNodes || !visEdges) return;
+
+  const f = networkFilterState;
+  const term = (f.search || '').trim().toLowerCase();
+  const fromTs = f.timeFrom ? Date.parse(f.timeFrom + 'T00:00:00') : null;
+  const toTs = f.timeTo ? Date.parse(f.timeTo + 'T23:59:59') : null;
+
+  // ---- which edges survive on their own properties ----
+  const edgeVisible = new Map();
+  rawNetworkEdges.forEach(e => {
+    let ok = true;
+    if (f.quick === 'money' && e.edge_type !== 'transaction') ok = false;
+    if (f.quick === 'layering' && e.edge_class !== 'layering') ok = false;
+    if (ok && f.amountMin && e.edge_type === 'transaction' && (e.amount || 0) < f.amountMin) ok = false;
+    // A call edge carries no amount, so an amount filter would silently erase all
+    // contact links; only transfers are subject to it.
+    if (ok && (fromTs || toTs) && (e.t_start || e.t_end)) {
+      const s = e.t_start ? Date.parse(e.t_start) : null;
+      const en = e.t_end ? Date.parse(e.t_end) : s;
+      // Keep an edge whose activity overlaps the range at all.
+      if (fromTs && en != null && en < fromTs) ok = false;
+      if (toTs && s != null && s > toTs) ok = false;
+    }
+    edgeVisible.set(e.id != null ? e.id : `${e.from}__${e.to}`, ok);
+  });
+
+  // ---- which nodes survive on their own properties ----
+  const nodeVisible = new Map();
+  rawNetworkNodes.forEach(n => {
+    let ok = true;
+    const tier = n.risk_tier;
+    if (f.quick === 'flagged' && tier && tier === 'LOW') ok = false;
+    if (ok && f.quick.startsWith('type:') && n.group !== f.quick.slice(5)) ok = false;
+    if (ok && f.risk !== 'all' && tier) ok = (TIER_AT_LEAST[f.risk] || []).includes(tier);
+    if (ok && f.rule !== 'all') ok = (n.rules_fired || []).includes(f.rule);
+    if (ok && f.city !== 'all') ok = (n.cities || []).includes(f.city);
+    nodeVisible.set(n.id, ok);
+  });
+
+  // ---- search: keep the hit and its immediate neighbourhood ----
+  let searchHits = null;
+  if (term) {
+    searchHits = new Set();
+    rawNetworkNodes.forEach(n => {
+      const hay = [n.id, n.label, n.name, n.entity_id, ...(n.phones || []), ...(n.accounts || [])]
+        .filter(Boolean).join(' ').toLowerCase();
+      if (hay.includes(term)) searchHits.add(n.id);
+    });
+    // A lone matched dot with its edges stripped tells you nothing — keep the
+    // node's direct counterparties so the hit stays in context.
+    const keep = new Set(searchHits);
+    rawNetworkEdges.forEach(e => {
+      if (searchHits.has(e.from)) keep.add(e.to);
+      if (searchHits.has(e.to)) keep.add(e.from);
+    });
+    rawNetworkNodes.forEach(n => {
+      if (!keep.has(n.id)) nodeVisible.set(n.id, false);
+    });
+  }
+
+  // ---- an edge also needs both of its endpoints ----
+  const nodeUpdates = [];
+  const edgeUpdates = [];
+  let shownEdges = 0;
+  rawNetworkEdges.forEach(e => {
+    const key = e.id != null ? e.id : `${e.from}__${e.to}`;
+    const ok = edgeVisible.get(key) && nodeVisible.get(e.from) && nodeVisible.get(e.to);
+    edgeVisible.set(key, !!ok);
+    if (ok) shownEdges++;
+    edgeUpdates.push({ id: e.id, hidden: !ok });
+  });
+
+  let shownNodes = 0;
+  rawNetworkNodes.forEach(n => {
+    const ok = !!nodeVisible.get(n.id);
+    if (ok) shownNodes++;
+    const update = { id: n.id, hidden: !ok };
+    if (searchHits) {
+      // Ring the actual matches so they are findable among their neighbours.
+      update.borderWidth = searchHits.has(n.id) ? 4 : 2;
+    } else {
+      update.borderWidth = 2;
+    }
+    nodeUpdates.push(update);
+  });
+
+  visNodes.update(nodeUpdates);
+  visEdges.update(edgeUpdates);
+
+  const status = document.getElementById('network-filter-status');
+  if (status) {
+    const filtered = shownNodes !== rawNetworkNodes.length || shownEdges !== rawNetworkEdges.length;
+    status.textContent = filtered
+      ? `Showing ${fmtNum(shownNodes)} of ${fmtNum(rawNetworkNodes.length)} nodes · ${fmtNum(shownEdges)} of ${fmtNum(rawNetworkEdges.length)} edges`
+      : `Showing all ${fmtNum(rawNetworkNodes.length)} nodes · ${fmtNum(rawNetworkEdges.length)} edges`;
+    status.classList.toggle('active', filtered);
+  }
+}
 
 /* ── EVIDENCE DRILL-DOWN (S2.3) ───────────────────────────────────────
    "Why this score?" answered with the source rows, not a paragraph.
