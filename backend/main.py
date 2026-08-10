@@ -359,6 +359,17 @@ def serialize_identity_graph(identity_graph, id_types, entity_map, scored_entiti
 
     meta["rendered_nodes"] = len(nodes)
     meta["rendered_edges"] = len(edges)
+    # The identity graph has no money and no time on its edges, so it exposes only
+    # the facets it can honestly support: identifier type. The UI reads this to
+    # decide which filter controls to show — which is why "Critical Only" and an
+    # amount slider do not appear here, and "Phones"/"Bank Accounts" do not appear
+    # on the money-flow graph whose nodes are entities.
+    meta["facets"] = {
+        "amount_min": 0.0, "amount_max": 0.0,
+        "time_min": None, "time_max": None,
+        "cities": [], "rules": [],
+        "id_types": sorted({n["group"] for n in nodes if n.get("group")}),
+    }
     return {"nodes": nodes, "edges": edges, "meta": meta}
 
 
