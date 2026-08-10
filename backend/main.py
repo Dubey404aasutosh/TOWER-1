@@ -531,11 +531,20 @@ def trigger_pipeline(window_minutes: int = Form(10)):
             
     logger.info(f"Triggering E-Rakshak pipeline on directory: {active_dir}")
     try:
-        # Run pipeline
+        # Any .docx still on disk describes the PREVIOUS run. /api/download-report
+        # serves a matching file if it finds one, so leaving them would hand a judge
+        # last dataset's report for this dataset's entity. Clear first, always.
+        clear_old_reports()
+
+        # Reports are generated on demand by /api/download-report, not in bulk here.
+        # Charting all 8 HIGH/CRITICAL entities inline measured ~17 s on top of an
+        # 8 s pipeline, against a "runs in seconds" requirement — and nothing reads
+        # the pre-generated files, since the UI links straight to the download
+        # endpoint. One report costs ~1 s when it is actually asked for.
         results = run_pipeline(
             data_dir=active_dir,
             window_minutes=window_minutes,
-            generate_reports=True
+            generate_reports=False
         )
         
         # Structure serializable results in memory
