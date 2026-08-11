@@ -523,6 +523,10 @@ const appState = {
   mapInstance: null,
   rawNetworkNodes: [],
   rawNetworkEdges: [],
+  // W — the temporal correlation window TCS-1/TCS-2 join on, in minutes.
+  // Sent to /api/run-pipeline and to the timeline endpoint; 10 matches the
+  // backend default so the UI and the pipeline agree before anyone touches it.
+  windowMinutes: 10,
 };
 
 /* ── MOCK DATA ──────────────────────────────────────────────────── */
