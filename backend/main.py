@@ -1750,8 +1750,8 @@ def read_dashboard():
         return {"message": "Welcome to E-Rakshak API. Frontend dashboard.html not found."}
     return FileResponse(dash_path)
 
-# Mount frontend folder
-app.mount("/", StaticFiles(directory=str(BACKEND_DIR.parent / "frontend")), name="static")
+# Mount frontend folder with html=True so index.html is served automatically for root /
+app.mount("/", StaticFiles(directory=str(BACKEND_DIR.parent / "frontend"), html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
