@@ -15,15 +15,25 @@ timeline view live · network filters live · evidence drill-down live · `.docx
 **All five Day 2 items are done.** Precision is unchanged and still the S3.1 labelling artifact —
 IDR-1 added a firing on an entity that was already flagged, so it could not move the number either way.
 
-> ⚠️ **Pipeline runtime is worse than previously recorded, and the earlier figures were measured
-> wrong.** Over `POST /api/run-pipeline` on a single clean server — the path a judge actually
-> triggers — 6 consecutive runs measured **15.8 / 19.2 / 19.5 / 19.9 / 21.0 / 18.8 s, median ≈19s**.
-> A bare `python` process calling `run_pipeline()` in a loop gives **6–20s** and warms down toward
-> 6s, which is where the "8.2s" and Day 1's "9.1s" came from — those are best-case numbers from an
-> unrepresentative harness, not the demo path. Two duplicated `uvicorn` processes were also
-> inflating some earlier samples and have been cleaned up; the ~19s figure is after that.
-> **The "< 10s" checklist line is NOT met.** This makes **S3.2 mandatory on Day 3, not optional** —
-> and S3.2's own measurements should be re-taken over the API, not in-process.
+> ⚠️ **Pipeline runtime is ~15s, not the 8–9s previously recorded. The "< 10s" line is NOT met,
+> and S3.2 is now mandatory rather than optional.**
+>
+> Controlled measurement — one process, `gc.collect()` between runs, stdout suppressed so print
+> I/O is not being timed — gives **14.59 / 15.32 / 14.59 / 15.25 / 14.61 / 15.06 s
+> (median 15.09s)**, with RSS flat at ~280 MB across all six: no leak, no degradation, very low
+> variance. Over `POST /api/run-pipeline` it is **~19s**, the extra ~4s being log I/O and the
+> threadpool hop.
+>
+> **The earlier 8.2s / 9.1s figures do not reproduce.** They came from ad-hoc runs whose timing
+> was contaminated three ways, all of which are worth knowing before Day 3 re-benchmarks: two
+> duplicated `uvicorn` processes were competing for CPU; the pipeline prints heavily and the cost
+> of that varies wildly by where stdout is pointed; and `autocommit.py` daemons commit during a
+> run. **Measure S3.2 the way the block above does, or the before/after slide will be noise.**
+>
+> **This is not a Day 2 regression.** A step-level profile puts the time in the rule engine
+> (3.1–6.7s) and risk/ML scoring (2.2–4.5s) — precisely the two S3.2 names — with ingestion at
+> 1.5–3.1s and temporal join at 0.8–2.0s. Graph building, the only step Day 2 touched (it gained
+> per-edge timestamps and per-entity cities for the S2.2 filters), costs **0.10–0.39s**.
 
 > **The core problem is not missing code — it is disconnected code.** The money-flow graph, the trace endpoint, the chart renderers, and the progress callback are all already built and simply never called. Most P0 items below are wiring, not algorithms.
 
@@ -315,7 +325,7 @@ Restores advertised functionality. Every item is a defect fix, not a feature.
 # 🟠 P1 — DAY 2 · Fill the rubric holes with zero coverage (~11h) — ✅ **DONE**
 
 > **Day 2 completed & verified.** `pytest backend/tests/` → **54 passed** (was 48).
-> Pipeline **8.16s @ 2,404 events**. Measured, before → after:
+> Measured, before → after:
 >
 > | | After Day 1 | After Day 2 |
 > |---|---|---|
