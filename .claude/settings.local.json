@@ -7,7 +7,8 @@
       "Bash(sed 's/@app\\\\.//')",
       "Bash(grep -oE '/api/[a-z0-9\\\\-{}/$]+' frontend/app.js)",
       "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\aasut\\\\Downloads\\\\TOWER-1-main\\\\backend\",\"C:\\\\Users\\\\aasut\\\\Downloads\\\\TOWER-1-main\\\\frontend\" -Recurse -File | Where-Object { $_.FullName -notmatch '__pycache__|node_modules|\\\\.git' } | Select-Object @{n='Path';e={$_.FullName.Replace\\('C:\\\\Users\\\\aasut\\\\Downloads\\\\TOWER-1-main\\\\',''\\)}}, Length | Format-Table -AutoSize)",
-      "PowerShell(python --version; python -c \"import fastapi, pandas, sklearn, networkx; print\\('deps ok'\\)\")"
+      "PowerShell(python --version; python -c \"import fastapi, pandas, sklearn, networkx; print\\('deps ok'\\)\")",
+      "Bash(timeout 900 python -m pytest backend/tests/ -q)"
     ]
   }
 }
