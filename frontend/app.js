@@ -517,6 +517,8 @@ const appState = {
   slideOverOpen: false,
   paletteOpen: false,
   dataMode: 'demo',
+  // null = not yet known, false = engine reports no run loaded, true = results exist
+  pipelineRun: null,
   results: null,
   currentCase: null,
   networkInstance: null,
@@ -529,17 +531,18 @@ const appState = {
   windowMinutes: 10,
 };
 
-/* ── MOCK DATA ──────────────────────────────────────────────────── */
-const MOCK_CASES = [
-  { id: 'CASE-2026-00412', title: 'Financial Fraud Network — Surat', status: 'critical', risk: 94, officer: 'SP Mehta', lastActivity: '12 min ago', entities: 7, rules: ['MUL-1', 'TCS-1', 'IDR-1'] },
-  { id: 'CASE-2026-00389', title: 'Cyber Extortion Ring', status: 'escalated', risk: 82, officer: 'SP Mehta', lastActivity: '30 min ago', entities: 9, rules: ['TCS-1', 'TCS-2'] },
-  { id: 'CASE-2026-00371', title: 'Money Mule Network — Surat East', status: 'active', risk: 71, officer: 'DI Sharma', lastActivity: '1h ago', entities: 3, rules: ['TCS-1', 'TCS-2'] },
-  { id: 'CASE-2026-00344', title: 'UPI Passthrough Cluster', status: 'active', risk: 68, officer: 'SI Patel', lastActivity: '3h ago', entities: 12, rules: ['MUL-1'] },
-  { id: 'CASE-2026-00321', title: 'UPI Fraud Cluster — Adajan', status: 'review', risk: 45, officer: 'DI Gupta', lastActivity: '1d ago', entities: 5, rules: ['STR-1'] },
-  { id: 'CASE-2026-00298', title: 'IMEI Spoofing Operation', status: 'review', risk: 38, officer: 'SI Kumar', lastActivity: '2d ago', entities: 2, rules: ['IDR-1'] },
-  { id: 'CASE-2026-00276', title: 'Bank Account Takeover Ring', status: 'closed', risk: 15, officer: 'DI Sharma', lastActivity: '5d ago', entities: 4, rules: [] },
-  { id: 'CASE-2026-00251', title: 'Dark Web Asset Recovery', status: 'archived', risk: 0, officer: 'SI Patel', lastActivity: '2w ago', entities: 6, rules: [] },
-];
+/* ── CASE REGISTRY ──────────────────────────────────────────────────
+   Empty by design. This used to hold eight invented cases — fabricated IDs,
+   titles, risk percentages, officer names and "12 min ago" timestamps — that
+   rendered on the dashboard, the case registry, the command palette and the
+   slide-over. None of it came from a pipeline run, and there is no case entity
+   in the backend for it to come from.
+
+   Case management is out of scope for this build. Rather than illustrate a
+   workflow with data that looks like output, every case surface now renders an
+   explicit empty state. Live analysis output lives on the KPI tiles, Persons of
+   Interest, Evidence Vault, Reports and the graphs. */
+const MOCK_CASES = [];
 
 /* Persons of Interest are filled from /api/results (rule-flagged entities only).
    The former hardcoded roster invented names, account numbers and risk
@@ -583,13 +586,50 @@ const RULE_CATALOG = [
   { id: 'LOC-1', name: 'Location Mismatch' },
 ];
 
-const COPILOT_RESPONSES = [
-  "Based on the current ingested data, ENT-0037 shows the strongest conviction signal: MUL-1 + TCS-1 + IDR-1 all fired. The account received ₹2.4L after 30 days dormancy, then 94% left within 8 hours. The 1-IMEI-to-3-phones linkage confirms identity fan-out.",
-  "The STR-1 rule on ENT-0041 (Yashica Issac) shows 4 outgoing transfers clustered at ₹49,800–₹49,950 within 36 hours — a classic structuring pattern to stay below the ₹50,000 reporting threshold.",
-  "The pipeline ran 7 deterministic forensic rules, generating 13 firings across 10 entities. No AI blending was applied — each risk designation is directly traceable to named rule logic and raw source row indices.",
-  "LOC-1 on ENT-0045 (Wriddhish Bhardwaj) was triggered because the SIM was KYC-registered in Ahmedabad, but all CDR records show active cell towers in Surat. This spatial mismatch is logged in decision_trace.jsonl.",
-  "To generate a Section 65B admissible report for ENT-0037, the forensic package includes: identity summary, exact rule firing explanations, direct evidence table rows, and the SHA-256 hash chain from ingestion to analysis.",
-];
+/* The copilot answers from the loaded run only.
+
+   It used to pick at random from five pre-written paragraphs that named
+   entities ("ENT-0037"), people ("Yashica Issac"), amounts ("₹2.4L") and
+   counts ("13 firings across 10 entities") from the Surat demo set. Those
+   answers were returned whatever you asked and whatever dataset was loaded,
+   which on a real case would put invented findings in an investigator's hands.
+
+   Natural-language querying is a bonus criterion and is not implemented, so
+   this now reports what the current run actually contains and says plainly
+   that it cannot parse the question. */
+function buildCopilotReply(question) {
+  const data = appState.results;
+  if (!data || !data.metrics) {
+    return "No dataset is loaded. Upload bank, CDR or IPDR files and run the pipeline — " +
+           "then I can report what the rule engine found in them.";
+  }
+
+  const m = data.metrics;
+  const firings = data.rule_firings || {};
+  const flagged = (data.suspects || []).filter(s => s.risk_tier !== 'LOW');
+
+  const firedList = Object.entries(firings)
+    .sort((a, b) => b[1] - a[1])
+    .map(([rule, count]) => `${rule} ×${count}`)
+    .join(', ');
+
+  const topLines = flagged.slice(0, 5).map(s =>
+    `• ${s.entity_id}${s.name && s.name !== 'Unknown' ? ` (${s.name})` : ''} — ` +
+    `${s.risk_tier}, fired ${(s.rules_fired || []).join(' + ') || 'no rule'}`
+  ).join('<br>');
+
+  return [
+    "I can't parse free-text questions yet — natural-language querying is not implemented.",
+    "Here is what the current run holds:",
+    `<br><strong>${Number(m.total_events || 0).toLocaleString()} events</strong> resolved into ` +
+      `<strong>${Number(m.total_entities || 0).toLocaleString()} entities</strong>; ` +
+      `<strong>${Number(m.flagged_suspects || 0).toLocaleString()}</strong> flagged, ` +
+      `<strong>${Number(m.ml_anomalies || 0).toLocaleString()}</strong> ML anomaly flags.`,
+    firedList ? `Rules fired: ${firedList}.` : "No rule fired on this dataset.",
+    topLines ? `<br>${topLines}` : "",
+    "<br>Open Persons of Interest or the Evidence Vault for the full picture.",
+  ].filter(Boolean).join(' ');
+}
 
 /* ── INIT (called inside enterDashboard) ────────────────────────── */
 function initDashboardOnce() {
@@ -707,6 +747,13 @@ function populateDashboard() {
   const tbody = document.getElementById('dash-case-tbody');
   if (!tbody) return;
   tbody.innerHTML = '';
+  if (!MOCK_CASES.length) {
+    tbody.innerHTML = `
+      <tr><td colspan="5" style="padding:22px;text-align:center;color:var(--text-muted);font-size:13px;">
+        No cases. Case management is not implemented in this build — flagged entities
+        appear under Persons of Interest.
+      </td></tr>`;
+  }
   MOCK_CASES.slice(0, 5).forEach(c => {
     const tr = document.createElement('tr');
     tr.onclick = () => openSlideOver(c.id);
@@ -813,6 +860,19 @@ function populateRuleGrid(ruleFirings) {
       <span class="rule-dot ${n > 0 ? 'fired' : 'clear'}"></span>
     </div>`;
   }).join('');
+
+  // The card header used to state "7 Rules · 13 Firings · 10 Entities Flagged"
+  // in the markup, which stayed on screen whatever ran. Written from the run.
+  const tag = document.getElementById('rule-summary-tag');
+  if (tag) {
+    if (!counts) {
+      tag.textContent = `${RULE_CATALOG.length} rules · no run loaded`;
+    } else {
+      const firings = Object.values(counts).reduce((a, b) => a + b, 0);
+      const fired = Object.keys(counts).filter(k => counts[k] > 0).length;
+      tag.textContent = `${fired} of ${RULE_CATALOG.length} rules fired · ${firings.toLocaleString()} firing${firings === 1 ? '' : 's'}`;
+    }
+  }
 }
 
 /* ── CASE TABLE ─────────────────────────────────────────────────── */
@@ -825,6 +885,14 @@ function renderCaseTable(cases) {
   const tbody = document.getElementById('full-case-tbody');
   if (!tbody) return;
   tbody.innerHTML = '';
+  if (!cases.length) {
+    tbody.innerHTML = `
+      <tr><td colspan="8" style="padding:26px;text-align:center;color:var(--text-muted);font-size:13px;">
+        <i class="fa-solid fa-folder-open" style="display:block;font-size:20px;margin-bottom:8px;opacity:0.5;"></i>
+        No cases registered. There is no case entity in the backend — this screen is a
+        placeholder for a workflow that is out of scope for this build.
+      </td></tr>`;
+  }
   cases.forEach(c => {
     const tr = document.createElement('tr');
     tr.onclick = () => openSlideOver(c.id);
@@ -1320,9 +1388,8 @@ function sendCopilotMessage() {
 
   setTimeout(() => {
     removeTypingIndicator(typingId);
-    const reply = COPILOT_RESPONSES[Math.floor(Math.random() * COPILOT_RESPONSES.length)];
-    appendCopilotMessage('system', reply, 'Case Copilot');
-  }, 900 + Math.random() * 600);
+    appendCopilotMessage('system', buildCopilotReply(text), 'Investigation Copilot');
+  }, 500);
 }
 
 function appendCopilotMessage(role, text, sender = 'You') {
@@ -1395,14 +1462,24 @@ async function fetchAPIStatus() {
     if (res.ok) {
       const data = await res.json();
       const count = data.entity_count || 0;
-      text.textContent = count > 0 ? `${count.toLocaleString()} Entities Ready` : 'System Ready';
-      pill.querySelector('.pulse-dot').className = 'pulse-dot green';
-      // Populate with real data if available
+      // Only a completed run fills these screens. Nothing is fetched — and so
+      // nothing is drawn — until one exists.
+      appState.pipelineRun = !!data.pipeline_run;
       if (data.pipeline_run) {
+        text.textContent = count > 0 ? `${count.toLocaleString()} Entities Ready` : 'Run complete — no entities';
+        pill.querySelector('.pulse-dot').className = 'pulse-dot green';
         fetchRealResults();
         fetchVerificationSummary();
         fetchEvidenceFiles();
         fetchDecisionTrace();
+      } else {
+        text.textContent = 'No dataset loaded';
+        pill.querySelector('.pulse-dot').className = 'pulse-dot blue';
+        markKPIsUnavailable();
+        // Recall/precision only exist against a run. Leaving the tile on screen
+        // showing "–% recall · –% precision" reads like a measured result of zero.
+        const acc = document.getElementById('kpi-accuracy-card');
+        if (acc) acc.style.display = 'none';
       }
     }
   } catch {
@@ -1423,7 +1500,11 @@ function markKPIsUnavailable() {
 
 async function fetchRealResults() {
   try {
-    const res = await fetch(`${API_BASE}/api/results`, { signal: AbortSignal.timeout(5000) });
+    // 30s, not 5s: a pipeline run on a freshly uploaded dataset takes several
+    // seconds and this is called immediately after one is requested.
+    const res = await fetch(`${API_BASE}/api/results`, { signal: AbortSignal.timeout(30000) });
+    // 409 is the ordinary "nothing has been run yet" answer, not a failure.
+    if (res.status === 409) { markKPIsUnavailable(); return; }
     if (!res.ok) return;
     const data = await res.json();
     appState.results = data;
@@ -1664,27 +1745,18 @@ function initMap() {
   // engine reasoned over. The hardcoded list below is only a fallback for when the
   // backend is unreachable — previously it was the sole source, which meant the map
   // could not move if the dataset did.
+  // Towers are plotted only from the loaded run. There used to be a hardcoded
+  // ten-tower Surat list as a fallback, which meant a dashboard with no dataset
+  // loaded still drew ten labelled towers at fixed coordinates — indistinguishable
+  // from a geolocated result. An empty map is the correct picture of no data.
   const apiTowers = (appState.results && appState.results.map_towers) || [];
-  const towers = apiTowers.length
-    ? apiTowers.map(t => ({ lat: t.lat, lon: t.lon, area: t.area, id: t.id }))
-    : [
-      { lat: 21.1702, lon: 72.8311, area: 'Athwa Gate' },
-      { lat: 21.1860, lon: 72.7933, area: 'Adajan' },
-      { lat: 21.2148, lon: 72.8470, area: 'Katargam' },
-      { lat: 21.1565, lon: 72.7710, area: 'Vesu' },
-      { lat: 21.2050, lon: 72.8630, area: 'Varachha' },
-      { lat: 21.1980, lon: 72.8150, area: 'Ring Road' },
-      { lat: 21.1690, lon: 72.7880, area: 'Piplod' },
-      { lat: 21.1780, lon: 72.8550, area: 'Udhna' },
-      { lat: 21.1450, lon: 72.7650, area: 'Dumas Road' },
-      { lat: 21.2280, lon: 72.8380, area: 'Sachin GIDC' },
-    ];
+  const towers = apiTowers.map(t => ({ lat: t.lat, lon: t.lon, area: t.area, id: t.id }));
 
   const meta = document.getElementById('map-meta');
   if (meta) {
     meta.textContent = apiTowers.length
       ? `${apiTowers.length} cell towers from the active tower master`
-      : 'Backend unreachable — showing built-in Surat tower reference set';
+      : 'No towers plotted — run the pipeline to geolocate this dataset’s CDR records';
   }
 
   towers.forEach(t => {
@@ -2261,21 +2333,33 @@ function initNetwork() {
 
   if (networkViews) { setNetworkView(activeNetworkView); return; }
 
-  // Try real data first
-  fetch(`${API_BASE}/api/results`, { signal: AbortSignal.timeout(8000) })
-    .then(r => r.json())
+  // The graph is only ever drawn from a completed run. /api/results answers 409
+  // until one exists, which is the ordinary state on a fresh start, not an error.
+  if (appState.pipelineRun === false) { renderNetworkEmptyState(); return; }
+
+  fetch(`${API_BASE}/api/results`, { signal: AbortSignal.timeout(30000) })
+    .then(r => {
+      if (r.status === 409) return null;
+      if (!r.ok) throw new Error(`results ${r.status}`);
+      return r.json();
+    })
     .then(data => {
-      if (data.network_views) {
+      if (!data) {
+        renderNetworkEmptyState();
+      } else if (data.network_views) {
         networkViews = data.network_views;
         setNetworkView(activeNetworkView);
       } else if (data.network) {
         // Older API shape — single graph, no toggle.
         initNetworkWithData(data.network);
       } else {
-        initNetworkMock();
+        renderNetworkEmptyState();
       }
     })
-    .catch(() => initNetworkMock());
+    .catch(err => {
+      console.warn('network graph unavailable:', err);
+      renderNetworkEmptyState('The analysis engine is not responding. Start the backend and reload.');
+    });
 }
 
 /* Switch between the money-flow and identity graphs. Both came from the same run;
@@ -2357,36 +2441,24 @@ function fmtNum(n) {
   return (typeof n === 'number' ? n : 0).toLocaleString('en-IN');
 }
 
-function initNetworkMock() {
-  // Build mock network from MOCK_POIS
-  const nodes = [];
-  const edges = [];
-  let nodeId = 1;
-  const idMap = {};
+/* Shown instead of a graph when no run is loaded.
 
-  MOCK_POIS.forEach(p => {
-    const entityNodeId = nodeId++;
-    idMap[p.id] = entityNodeId;
-    nodes.push({ id: entityNodeId, label: p.name.split(' ')[0], title: `${p.name}\n${p.id}\nRisk: ${p.risk}%`, group: p.tier.toLowerCase(), shape: 'dot', size: 14 + p.risk / 10, font: { color: '#F2F3F4', size: 11 } });
-
-    p.phones.slice(0, 1).forEach(ph => {
-      const nid = nodeId++;
-      nodes.push({ id: nid, label: ph.slice(-4), title: ph, group: 'phone', shape: 'dot', size: 10, font: { color: '#9BA1A8', size: 10 } });
-      edges.push({ from: entityNodeId, to: nid, color: { color: 'rgba(61,124,255,0.3)' }, width: 1.5 });
-    });
-
-    p.accounts.slice(0, 1).forEach(ac => {
-      const nid = nodeId++;
-      nodes.push({ id: nid, label: ac.slice(-4), title: ac, group: 'account', shape: 'dot', size: 10, font: { color: '#9BA1A8', size: 10 } });
-      edges.push({ from: entityNodeId, to: nid, color: { color: 'rgba(167,139,250,0.3)' }, width: 1.5 });
-    });
-  });
-
-  // Cross-link related entities
-  edges.push({ from: idMap['ENT-0037'], to: idMap['ENT-0041'], color: { color: 'rgba(255,77,77,0.3)' }, width: 2, dashes: true });
-  edges.push({ from: idMap['ENT-0042'], to: idMap['ENT-0044'], color: { color: 'rgba(255,176,32,0.3)' }, width: 1.5, dashes: true });
-
-  initNetworkWithData({ nodes, edges });
+   This replaced initNetworkMock(), which synthesised a fake graph — invented
+   nodes, invented cross-links between hardcoded "ENT-0037"/"ENT-0041" ids —
+   and drew it in the same canvas, with the same styling, as a real resolved
+   entity graph. There was nothing on screen to tell the two apart. A graph is
+   either the one the pipeline produced or it is not drawn. */
+function renderNetworkEmptyState(message) {
+  const container = document.getElementById('identity-network');
+  if (!container) return;
+  container.innerHTML = `
+    <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+                gap:10px;padding:40px;text-align:center;color:var(--text-muted);">
+      <i class="fa-solid fa-diagram-project" style="font-size:26px;opacity:0.4;"></i>
+      <div style="font-size:13.5px;max-width:380px;line-height:1.55;">
+        ${message || 'No graph to draw. Upload files and run the pipeline — the graph is built from resolved entities, never synthesised.'}
+      </div>
+    </div>`;
 }
 
 function initNetworkWithData(data) {
@@ -3090,9 +3162,47 @@ function initModeToggle() {
   const toggle = document.getElementById('mode-toggle');
   const label = document.getElementById('mode-label');
   if (!toggle || !label) return;
-  toggle.addEventListener('change', () => {
-    appState.dataMode = toggle.checked ? 'upload' : 'demo';
-    label.textContent = toggle.checked ? 'Upload Mode' : 'Demo Mode (Surat)';
+
+  // This used to set a local variable and nothing else, so flipping it changed
+  // the label and left the backend reading whichever directory it was already
+  // on. The switch now actually moves the engine, and says so if it cannot.
+  toggle.addEventListener('change', async () => {
+    const mode = toggle.checked ? 'upload' : 'demo';
+    label.textContent = mode === 'upload' ? 'Upload Mode — your files' : 'Demo Mode — Surat dataset';
+    try {
+      const res = await fetch(`${API_BASE}/api/toggle-mode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
+      if (!res.ok) throw new Error(`toggle-mode ${res.status}`);
+      appState.dataMode = mode;
+
+      // Switching datasets clears the previous run server-side, so clear every
+      // screen that was showing it rather than leaving the old dataset's
+      // entities on display under the new mode's label.
+      appState.results = null;
+      MOCK_POIS.length = 0;
+      REPORTS = [];
+      EVIDENCE_FILES = [];
+      DECISION_TRACE = [];
+      ACTIVITY_FEED = [];
+      RULE_FIRINGS = null;
+      networkViews = null;
+      appState.networkInstance = null;
+      markKPIsUnavailable();
+      populateDashboard();
+      populatePOI();
+      populateEvidence();
+      populateReports();
+      populateRuleGrid();
+      fetchAPIStatus();
+      label.textContent += ' · run the pipeline to load it';
+    } catch (e) {
+      console.warn('mode switch failed:', e);
+      toggle.checked = !toggle.checked;
+      label.textContent = 'Could not reach the engine — mode unchanged';
+    }
   });
 }
 

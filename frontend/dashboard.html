@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="style.css?v=26">
+  <link rel="stylesheet" href="style.css?v=27">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230F172A'/%3E%3Cpath d='M16 6l8 3v7c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V9l8-3z' fill='%23F97316'/%3E%3C/svg%3E">
 </head>
 <body style="background: var(--ref-bg-app); overflow: hidden;">
@@ -58,7 +58,7 @@
 <aside class="slideover" id="case-slideover">
   <div class="slideover-header">
     <div>
-      <div class="slideover-case-id" id="so-case-id">CASE-2026-00412</div>
+      <div class="slideover-case-id" id="so-case-id">—</div>
       <div class="slideover-case-title" id="so-case-title">Loading…</div>
     </div>
     <button class="icon-btn" onclick="closeSlideOver()"><i class="fa-solid fa-xmark"></i></button>
@@ -90,7 +90,7 @@
       </a>
       <a class="nav-item" data-view="cases" onclick="switchView('cases',this)">
         <i class="fa-solid fa-folder-open"></i><span>Cases</span>
-        <span class="nav-badge" id="badge-cases">5</span>
+        
       </a>
       <a class="nav-item" data-view="poi" onclick="switchView('poi',this)">
         <i class="fa-solid fa-user-secret"></i><span>Persons of Interest</span>
@@ -150,7 +150,7 @@
           <span class="pulse-dot green"></span>
           <span id="status-text">Pipeline Ready</span>
         </div>
-        <button class="icon-btn notif-btn"><i class="fa-solid fa-bell"></i><span class="notif-badge">4</span></button>
+        <button class="icon-btn notif-btn" title="Notifications"><i class="fa-solid fa-bell"></i></button>
         <button class="icon-btn" onclick="toggleTheme()" id="theme-toggle-btn" title="Toggle Light / Dark Mode"><i class="fa-solid fa-sun"></i></button>
         <button class="icon-btn" onclick="toggleCopilot()" title="AI Copilot"><i class="fa-solid fa-robot"></i></button>
         <div class="topbar-avatar">SP</div>
@@ -238,7 +238,7 @@
           <div class="card">
             <div class="card-header">
               <div class="card-title">Active Investigation Cases</div>
-              <span class="tag" style="opacity:0.8;" title="Case management is out of scope for this build — there is no case entity in the backend. These rows illustrate the intended workflow; every figure sourced from the analysis engine appears in the KPI tiles, Pipeline Activity, Persons of Interest and Evidence Vault.">Illustrative workflow · not from this run</span>
+              <span class="tag" style="opacity:0.8;" title="Case management is out of scope for this build — there is no case entity in the backend. Live analysis output appears in the KPI tiles, Pipeline Activity, Persons of Interest and Evidence Vault.">Not implemented</span>
               <button class="btn btn-ghost btn-sm" onclick="switchView('cases',document.querySelector('[data-view=cases]'))">
                 View all <i class="fa-solid fa-arrow-right"></i>
               </button>
@@ -262,7 +262,7 @@
         <div class="card">
           <div class="card-header">
             <div class="card-title">Rule Engine — Last Pipeline Run</div>
-            <span class="tag tag-orange">7 Rules · 13 Firings · 10 Entities Flagged</span>
+            <span class="tag tag-orange" id="rule-summary-tag">7 rules · no run loaded</span>
           </div>
           <div class="rule-grid" id="rule-grid"></div>
         </div>
@@ -398,8 +398,8 @@
         <div class="card">
           <div class="card-header">
             <div class="card-title">Investigation Registry</div>
-            <span class="tag" style="opacity:0.8;" title="Case management is out of scope for this build — no case entity exists in the backend. Live analysis output is on the Dashboard, Persons of Interest and Evidence Vault screens.">Illustrative workflow · not from this run</span>
-            <span class="tag tag-orange" id="case-count">8 cases</span>
+            <span class="tag" style="opacity:0.8;" title="Case management is out of scope for this build — no case entity exists in the backend. Live analysis output is on the Dashboard, Persons of Interest and Evidence Vault screens.">Not implemented</span>
+            <span class="tag tag-orange" id="case-count">0 cases</span>
           </div>
           <table class="data-table">
             <thead>
@@ -726,6 +726,6 @@
      MIME-type error on every page load. -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
-<script src="app.js?v=35"></script>
+<script src="app.js?v=37"></script>
 </body>
 </html>

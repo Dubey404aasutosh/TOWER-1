@@ -627,25 +627,37 @@ def trigger_pipeline(window_minutes: int = Form(10)):
 
 @app.on_event("startup")
 def startup_event():
-    """Auto-run pipeline on demo dataset on startup so dashboard is populated on load."""
-    logger.info("Initializing E-Rakshak server - running startup analysis on demo dataset...")
-    try:
-        results = run_pipeline(data_dir=RAW_DIR, window_minutes=10, generate_reports=False)
-        STATE["last_results"] = results
-        STATE["pipeline_run"] = True
-        logger.info("Startup demo pipeline execution complete. System ready.")
-    except Exception as e:
-        logger.warning(f"Startup pipeline auto-run skipped: {e}")
+    """Start with nothing loaded.
+
+    This used to run the demo dataset through the pipeline at boot so the
+    dashboard had something to show. That means every screen — KPIs, persons of
+    interest, evidence vault, graphs, reports — is populated with Surat demo
+    output before the operator has supplied a single file, and it is not
+    obvious on screen which of it came from them. The dashboard now starts
+    empty and stays empty until a pipeline run is explicitly requested, so
+    everything on it belongs to the dataset actually under investigation.
+    """
+    logger.info(
+        "E-Rakshak API ready. No dataset loaded — upload files and run the "
+        "pipeline, or switch to demo mode in Settings."
+    )
 
 
 @app.get("/api/results")
 def get_results():
+    # Deliberately does NOT kick off a run. A GET that silently executes the
+    # whole pipeline meant merely opening the dashboard produced a full set of
+    # demo results, which is exactly the pre-populated state this endpoint is
+    # supposed to report the absence of. Callers get an explicit "nothing has
+    # been run" and the UI renders its empty states.
     if not STATE["pipeline_run"] or STATE["last_results"] is None:
-        logger.info("Pipeline not executed yet, auto-triggering pipeline for results endpoint...")
-        trigger_pipeline(window_minutes=10)
-        
+        raise HTTPException(
+            status_code=409,
+            detail="No analysis has been run yet. Upload files and run the pipeline."
+        )
+
     results = STATE["last_results"]
-    
+
     # 1. Operational Executive Metrics
     entities = results.get("entities", {})
     scored_entities = results.get("scored_entities", {})
