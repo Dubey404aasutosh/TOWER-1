@@ -387,63 +387,122 @@ def check_tcs1(entity_id, enriched_txns):
 # ============================================================
 # RULE TCS-2: Call-Then-Transfer
 # ============================================================
-def check_tcs2(entity_id, all_events_df, window_minutes=15):
+def _normalise_ident(value):
+    """Strip an identifier down to the form used as an entity_map key."""
+    if value is None:
+        return ""
+    text = str(value).strip()
+    return "" if text.lower() in ("nan", "none", "<na>") else text
+
+
+def _digits(value):
+    return "".join(ch for ch in str(value) if ch.isdigit())
+
+
+def check_tcs2(entity_id, all_events_df, window_minutes=15, entity_map=None):
     """
-    TCS-2: Call-Then-Transfer
-    A phone call to a counterparty followed within 15 minutes by a financial transfer.
+    TCS-2: Call-Then-Transfer.
+
+    A call to a B-party 1-15 minutes before a transfer **to an account or VPA that
+    belongs to the person called**. The link is the whole rule: without it, "a call
+    happened and then a transfer happened" describes ordinary behaviour, and the
+    firing means nothing.
+
+    The previous implementation carried its own admission in a comment —
+    `# (simplified: any call within the window counts as suspicious)` — and its
+    condition was `if call_party and txn_counterparty:`, i.e. both strings merely
+    non-empty. It fired on any transfer that happened to follow any call.
+
+    A link is established two ways, both auditable and recorded in the evidence:
+      resolved  — the called number and the beneficiary account/VPA resolve to the
+                  SAME entity via entity resolution
+      embedded  — the beneficiary VPA literally contains the called number
+                  (UPI handles are routinely `<msisdn>@bank`)
+
+    Without an `entity_map` the linkage cannot be established, so the rule does not
+    fire. That is deliberate: firing anyway would restore exactly the behaviour this
+    fix exists to remove.
     """
-    if all_events_df.empty:
+    if all_events_df is None or all_events_df.empty:
         return False, "", []
 
-    entity_events = _get_entity_df(entity_id, all_events_df).copy()
+    entity_events = _get_entity_df(entity_id, all_events_df)
     if entity_events.empty:
         return False, "", []
 
+    entity_events = entity_events.copy()
     entity_events['timestamp'] = pd.to_datetime(entity_events['timestamp'])
 
     calls = entity_events[entity_events['event_type'].isin(['call', 'sms'])].sort_values('timestamp')
-    txns = entity_events[entity_events['event_type'] == 'transaction'].sort_values('timestamp')
+    txns = entity_events[entity_events['event_type'] == 'transaction']
 
     if calls.empty or txns.empty:
         return False, "", []
 
+    entity_map = entity_map or {}
+
+    # Materialise the call side once as arrays. The old code rebuilt a boolean mask
+    # over every call for every transaction and then iterrows()'d the matches —
+    # this rule was the single most expensive one in the engine.
+    call_times = calls['timestamp'].to_numpy()
+    call_parties = [_normalise_ident(c) for c in calls['counterparty'].tolist()]
+    call_refs = calls['raw_row_ref'].tolist()
+    call_party_digits = [_digits(p) for p in call_parties]
+
     evidence = []
     details = []
+    linked_entities = set()
 
-    for _, txn in txns.iterrows():
-        txn_time = txn['timestamp']
-        txn_counterparty = str(txn.get('counterparty', '')).strip()
+    for txn in txns.itertuples(index=False):
+        beneficiary = _normalise_ident(getattr(txn, 'counterparty', ''))
+        if not beneficiary:
+            continue
+        beneficiary_entity = entity_map.get(beneficiary)
+        beneficiary_digits = _digits(beneficiary)
 
-        # Look for calls within 1-15 minutes BEFORE this transaction
-        window_start = txn_time - timedelta(minutes=window_minutes)
-        window_end = txn_time - timedelta(minutes=1)
+        txn_time = txn.timestamp
+        lo = np.searchsorted(call_times, np.datetime64(txn_time - timedelta(minutes=window_minutes)), side='left')
+        hi = np.searchsorted(call_times, np.datetime64(txn_time - timedelta(minutes=1)), side='right')
 
-        matching_calls = calls[
-            (calls['timestamp'] >= window_start) &
-            (calls['timestamp'] <= window_end)
-        ]
+        for i in range(lo, hi):
+            call_party = call_parties[i]
+            if not call_party:
+                continue
 
-        if not matching_calls.empty:
-            for _, call in matching_calls.iterrows():
-                call_party = str(call.get('counterparty', '')).strip()
-                # Check if the call counterparty is linked to the transaction counterparty
-                # (simplified: any call within the window counts as suspicious)
-                if call_party and txn_counterparty:
-                    txn_ref = f"row_{txn.get('raw_row_ref', 'N/A')}"
-                    call_ref = f"row_{call.get('raw_row_ref', 'N/A')}"
-                    evidence.extend([txn_ref, call_ref])
+            callee_entity = entity_map.get(call_party)
+            link_kind = None
+            if callee_entity and beneficiary_entity and callee_entity == beneficiary_entity:
+                link_kind = "resolved"
+            elif call_party_digits[i] and len(call_party_digits[i]) >= 10 \
+                    and call_party_digits[i] in beneficiary_digits:
+                link_kind = "embedded"
 
-                    amt = abs(txn.get('amount', 0))
-                    gap = (txn_time - call['timestamp']).total_seconds() / 60
-                    details.append(
-                        f"Call to {call_party} at {call['timestamp']} ({gap:.0f} min before "
-                        f"transfer of {amt:.0f} to {txn_counterparty})"
-                    )
+            if link_kind is None:
+                # A call to someone unrelated to the payee. Not TCS-2.
+                continue
+
+            gap = (txn_time - pd.Timestamp(call_times[i])).total_seconds() / 60
+            amt = abs(getattr(txn, 'amount', 0) or 0)
+            evidence.extend([
+                f"row_{_row_ref_text(getattr(txn, 'raw_row_ref', None))}",
+                f"row_{_row_ref_text(call_refs[i])}",
+                f"link:{link_kind}",
+                f"called:{call_party}",
+                f"paid:{beneficiary}",
+            ])
+            if callee_entity:
+                linked_entities.add(str(callee_entity))
+            details.append(
+                f"Call to {call_party} at {pd.Timestamp(call_times[i])} ({gap:.0f} min before "
+                f"transfer of {amt:.0f} to {beneficiary}, {link_kind} link)"
+            )
 
     if evidence:
+        who = f" B-party resolves to {', '.join(sorted(linked_entities))}." if linked_entities else ""
         explanation = (
             f"Call-Then-Transfer pattern: {len(details)} instance(s) for entity {entity_id}. "
-            f"A phone call preceded a financial transfer within {window_minutes} minutes. "
+            f"A call was placed to the beneficiary within {window_minutes} minutes before money "
+            f"moved to an account/VPA belonging to that same party.{who} "
             f"Details: {'; '.join(details[:3])}."
         )
         _append_trace(entity_id, "TCS-2", evidence[:20], explanation)
