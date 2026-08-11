@@ -198,6 +198,12 @@ def verify_against_ground_truth(scored_entities, entities=None, ground_truth_pat
     print(f"\nRECALL:    {recall:.2%}")
     print(f"PRECISION: {precision:.2%}")
     print(f"F1 SCORE:  {f1:.2%}")
+    print(f"THRESHOLD: {results['threshold']}")
+    if specificity is not None:
+        print(f"SPECIFICITY: {specificity:.2%} "
+              f"({clean_total - clean_flagged} of {clean_total} clean KYC-named entities left unflagged)")
+    if false_positive_ids:
+        print(f"False positives: {', '.join(false_positive_ids)}")
 
     print(f"\nPer-typology breakdown:")
     for r in typology_results:
