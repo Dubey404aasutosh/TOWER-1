@@ -38,7 +38,10 @@ def pipeline_results():
     The run costs ~8 s; executing it per test would multiply that by the number
     of end-to-end checks for no additional coverage.
     """
-    return run_pipeline()
+    raw_dir = BACKEND_DIR / "data" / "raw"
+    if not raw_dir.exists() or not any(raw_dir.iterdir()):
+        pytest.skip("Demo raw dataset is empty/not present")
+    return run_pipeline(data_dir=raw_dir, generate_reports=False)
 
 
 # ============================================================

@@ -213,6 +213,9 @@
             <h1 class="page-title">Financial &amp; Telecom Intelligence Overview</h1>
           </div>
           <div class="page-actions">
+            <button class="btn btn-secondary btn-sm" onclick="confirmResetDataset()" title="Reset current case dataset &amp; reports for a new case">
+              <i class="fa-solid fa-rotate-left"></i> Reset Dataset / New Case
+            </button>
             <button class="btn btn-ghost btn-sm" onclick="openPipeline()">
               <i class="fa-solid fa-play"></i> Run Pipeline
             </button>
@@ -323,8 +326,8 @@
             <h1 class="page-title">Multi-Source Ingestion &amp; Dataset Fusion</h1>
           </div>
           <div class="page-actions">
-            <button class="btn btn-ghost btn-sm" onclick="clearAllUploads()">
-              <i class="fa-solid fa-trash-can"></i> Clear All
+            <button class="btn btn-secondary btn-sm" onclick="confirmResetDataset()" title="Reset current dataset and reports for new case">
+              <i class="fa-solid fa-rotate-left"></i> Reset Dataset / New Case
             </button>
             <button class="btn btn-primary btn-sm" onclick="openPipeline()">
               <i class="fa-solid fa-play"></i> Run Pipeline &amp; Fuse Datasets
@@ -683,11 +686,16 @@
             </div>
             <div class="setting-row">
               <div>
-                <div class="setting-label" id="mode-label">Demo Mode — Surat Dataset</div>
+                <div class="setting-label" id="mode-label">Upload Mode — your files</div>
               </div>
-              <button class="btn btn-primary btn-sm" onclick="openPipeline()">
-                <i class="fa-solid fa-play"></i> Run Pipeline
-              </button>
+              <div style="display:flex;gap:8px;">
+                <button class="btn btn-secondary btn-sm" onclick="confirmResetDataset()" title="Reset dataset for new case">
+                  <i class="fa-solid fa-rotate-left"></i> Reset Case Dataset
+                </button>
+                <button class="btn btn-primary btn-sm" onclick="openPipeline()">
+                  <i class="fa-solid fa-play"></i> Run Pipeline
+                </button>
+              </div>
             </div>
           </div>
 

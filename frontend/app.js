@@ -519,7 +519,7 @@ const appState = {
   copilotOpen: false,
   slideOverOpen: false,
   paletteOpen: false,
-  dataMode: 'demo',
+  dataMode: 'upload',
   // null = not yet known, false = engine reports no run loaded, true = results exist
   pipelineRun: null,
   results: null,
@@ -3780,9 +3780,14 @@ function initModeToggle() {
   const label = document.getElementById('mode-label');
   if (!toggle || !label) return;
 
-  // This used to set a local variable and nothing else, so flipping it changed
-  // the label and left the backend reading whichever directory it was already
-  // on. The switch now actually moves the engine, and says so if it cannot.
+  if (appState.dataMode === 'upload') {
+    toggle.checked = true;
+    label.textContent = 'Upload Mode — your files';
+  } else {
+    toggle.checked = false;
+    label.textContent = 'Demo Mode — Surat dataset';
+  }
+
   toggle.addEventListener('change', async () => {
     const mode = toggle.checked ? 'upload' : 'demo';
     label.textContent = mode === 'upload' ? 'Upload Mode — your files' : 'Demo Mode — Surat dataset';
@@ -3827,6 +3832,52 @@ function initModeToggle() {
     }
   });
 }
+
+/* ── RESET DATASET / NEW CASE ──────────────────────────────────── */
+async function confirmResetDataset() {
+  const confirmed = window.confirm(
+    "Reset Case Dataset?\n\nThis will wipe all uploaded/ingested files, clear generated reports, reset analysis memory, and prepare the system for a new case upload.\n\nDo you want to proceed?"
+  );
+  if (!confirmed) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/reset-dataset`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    appState.results = null;
+    appState.pipelineRun = false;
+    MOCK_POIS.length = 0;
+    REPORTS = [];
+    EVIDENCE_FILES = [];
+    DECISION_TRACE = [];
+    ACTIVITY_FEED = [];
+    RULE_FIRINGS = null;
+    networkViews = null;
+    appState.networkInstance = null;
+
+    markKPIsUnavailable();
+    populateDashboard();
+    populatePOI();
+    populateEvidence();
+    populateReports();
+    populateRuleGrid();
+    fetchAPIStatus();
+
+    copilotState.focusEntity = null;
+    resetCopilotChat();
+    refreshCopilotStatus();
+
+    alert(data.message || 'Dataset, reports, and analysis state reset cleanly. Ready for new case upload.');
+  } catch (err) {
+    console.error('Reset dataset error:', err);
+    alert(`Failed to reset dataset: ${err.message}`);
+  }
+}
+window.confirmResetDataset = confirmResetDataset;
+window.clearAllUploads = confirmResetDataset;
 
 /* ── HELPERS ────────────────────────────────────────────────────── */
 function statusBadge(status) {

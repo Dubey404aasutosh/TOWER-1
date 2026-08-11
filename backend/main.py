@@ -583,16 +583,40 @@ def get_evidence_files():
 
 
 
+@app.post("/api/reset-dataset")
 @app.post("/api/clear-uploads")
-def clear_uploads():
-    if UPLOAD_DIR.exists():
-        for item in UPLOAD_DIR.iterdir():
-            if item.is_file():
-                item.unlink()
+def reset_dataset():
+    """Wipe uploaded/raw files, reports, traces, and pipeline memory state for a new case."""
+    for directory in [UPLOAD_DIR, RAW_DIR]:
+        if directory.exists():
+            for item in directory.iterdir():
+                if item.is_file() and item.name != ".gitkeep":
+                    try:
+                        item.unlink()
+                    except Exception as e:
+                        logger.error(f"Failed to remove file {item}: {e}")
+
     clear_old_reports()
+
+    trace_file = BACKEND_DIR / "decision_trace.jsonl"
+    if trace_file.exists():
+        try:
+            trace_file.unlink()
+        except Exception as e:
+            logger.error(f"Failed to remove trace file: {e}")
+
+    STATE["data_mode"] = "upload"
     STATE["pipeline_run"] = False
     STATE["last_results"] = None
-    return {"status": "success"}
+    gc.collect()
+
+    logger.info("Dataset and case state reset cleanly for new investigation.")
+    return {
+        "status": "success",
+        "message": "Dataset, reports, and analysis state reset cleanly. Ready for new case upload.",
+        "data_mode": "upload",
+        "pipeline_run": False
+    }
 
 
 @app.post("/api/run-pipeline")

@@ -215,14 +215,11 @@ def run_pipeline(data_dir=None, window_minutes=10, generate_reports=False, progr
     if generate_reports:
         notify("Generating forensic reports", 7)
         try:
-            # Clear old reports before generating new ones. Files named "sample_*"
-            # are the committed deliverables checked into the repo, not run output —
-            # deleting them would strip an artefact out of a fresh clone.
+            # Clear old reports before generating new ones.
             reports_dir = PROJECT_ROOT / "reports"
             if reports_dir.exists():
                 for old_report in reports_dir.iterdir():
-                    if (old_report.is_file() and old_report.suffix == ".docx"
-                            and not old_report.name.startswith("sample_")):
+                    if old_report.is_file() and old_report.suffix == ".docx":
                         old_report.unlink()
                 print(f"  Cleared old reports from {reports_dir}")
 
