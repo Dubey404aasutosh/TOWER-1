@@ -1144,7 +1144,12 @@ def get_verification_summary():
         "total_gt_entities": verification.get("total_gt_entities", 0),
         "true_positives": verification.get("true_positives", 0),
         "false_positives": verification.get("false_positives", 0),
+        "false_positive_ids": verification.get("false_positive_ids", []),
         "false_negatives": verification.get("false_negatives", 0),
+        # Reported with its denominator so the figure cannot be quoted bare.
+        "specificity": verification.get("specificity"),
+        "clean_entities_evaluated": verification.get("clean_entities_evaluated", 0),
+        "threshold": verification.get("threshold", ""),
         "typology_breakdown": typology_breakdown,
         "typology_results": verification.get("typology_results", []),
     }))
