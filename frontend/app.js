@@ -1766,7 +1766,9 @@ async function loadTimeline(entityId) {
   if (link) link.href = `${API_BASE}/api/download-report/${encodeURIComponent(entityId)}`;
 
   try {
-    const res = await fetch(`${API_BASE}/api/entity/${encodeURIComponent(entityId)}/timeline`,
+    const w = appState.windowMinutes || 10;
+    const res = await fetch(
+      `${API_BASE}/api/entity/${encodeURIComponent(entityId)}/timeline?window_minutes=${w}`,
       { signal: AbortSignal.timeout(10000) });
     if (!res.ok) throw new Error(`timeline ${res.status}`);
     const payload = await res.json();
