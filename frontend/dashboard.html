@@ -483,6 +483,19 @@
             <label class="nf-field"><span>Entity</span>
               <select id="timeline-entity-select"></select>
             </label>
+            <!-- W, the temporal correlation window. correlation.md asks for this to
+                 be configurable from the UI; it is the parameter TCS-1/TCS-2 join on.
+                 Changing it here re-joins this entity's events for preview; "Apply to
+                 analysis" re-runs the whole pipeline at the new W. -->
+            <label class="nf-field"><span>Correlation window W</span>
+              <select id="timeline-window-select">
+                <option value="5">± 5 min</option>
+                <option value="10" selected>± 10 min</option>
+                <option value="15">± 15 min</option>
+                <option value="30">± 30 min</option>
+                <option value="60">± 60 min</option>
+              </select>
+            </label>
             <a class="btn btn-ghost btn-sm" id="timeline-report-link" href="#">
               <i class="fa-solid fa-file-word"></i> Report
             </a>
