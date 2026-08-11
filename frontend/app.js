@@ -1518,9 +1518,14 @@ async function fetchVerificationSummary() {
     const missed = (data.typology_breakdown || []).filter(t => t.missed > 0).map(t => t.label);
     const subEl = document.getElementById('kpi-accuracy-sub');
     if (subEl) {
+      // Specificity carries its denominator on screen for the same reason the
+      // backend attaches it: "99%" means nothing without the population.
+      const spec = (data.specificity == null || !data.clean_entities_evaluated)
+        ? ''
+        : ` · ${Math.round(data.specificity * 100)}% specificity over ${data.clean_entities_evaluated} clean entities`;
       subEl.innerHTML = missed.length
-        ? `Across ${typologyCount} planted typologies · missed: ${missed.join(', ')}`
-        : `Across ${typologyCount} planted fraud typologies · all detected`;
+        ? `Across ${typologyCount} planted typologies · missed: ${missed.join(', ')}${spec}`
+        : `Across ${typologyCount} planted fraud typologies · all detected${spec}`;
     }
 
     card.title = `Live self-verification against ${data.total_gt_entities} planted ground-truth entities: ` +
