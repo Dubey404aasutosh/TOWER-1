@@ -1561,8 +1561,13 @@ async function openPipeline() {
     }
   }
 
-  // Step 2: Trigger real backend pipeline execution
-  const pipelinePromise = fetch(`${API_BASE}/api/run-pipeline`, { method: 'POST' })
+  // Step 2: Trigger real backend pipeline execution at the selected correlation
+  // window. This used to POST no body at all, so the endpoint's window_minutes
+  // parameter always fell back to its default and the UI control had no effect.
+  const pipelineBody = new FormData();
+  pipelineBody.append('window_minutes', String(appState.windowMinutes || 10));
+  const pipelinePromise = fetch(`${API_BASE}/api/run-pipeline`,
+    { method: 'POST', body: pipelineBody })
     .then(r => r.json())
     .catch(e => console.warn("Pipeline API error:", e));
 
