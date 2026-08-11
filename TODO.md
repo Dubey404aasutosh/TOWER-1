@@ -550,7 +550,16 @@ These are requirement lines currently scoring near zero. Backend and frontend tr
   - Bonus if time: consume `expected_flagged_rows` from `ground_truth.json` for **row-level** precision. It's generated every run and thrown away — no other team will have this.
   - ⚠️ Fix this *after* S1.1/S1.3 so the number you publish is the improved one.
 
-- [ ] **S3.2 — Kill the O(N²) hot loop** ⏱ 1.5h
+- [ ] **S3.2 — Kill the O(N²) hot loop** ⏱ 1.5h 🔴 **PROMOTED — no longer optional (Day 2 finding)**
+  - 📊 **Re-measured on Day 2 and the target is missed by 50%:** the pipeline is **~15s**, not the
+    8–9s on record, so the "< 10s" pre-submission line fails without this. Step profile, 3 trials:
+    rule engine **3.1–6.7s**, risk/ML **2.2–4.5s**, ingestion **1.5–3.1s**, temporal join
+    **0.8–2.0s**, graph build **0.1–0.4s**. The two steps this item names are the two that dominate.
+  - ⚠️ **Benchmark methodology matters more than it looks here.** Timing swung 6s→21s across naive
+    runs. Use one process, `gc.collect()` between runs, **stdout redirected to a `StringIO`** (the
+    pipeline prints heavily and printing is being timed otherwise), and check no duplicate
+    `uvicorn` is running. Done that way the measurement is stable to ±0.4s, which is what a
+    before/after slide needs.
   - `backend/scoring/risk_engine.py:92`: `all_events_df[all_events_df['entity_id'] == entity_id]` inside a loop over 1,521 entities = full scan per entity.
   - `run_all_rules` already solved this at `rules.py:769` with `dict(tuple(df.groupby('entity_id')))` — apply the identical pattern.
   - Also skip the 1,476 event-less passthrough entities in the rule loop (the fast-path guard at `rules.py:784` misses them because counterparty accounts populate `entity_data['accounts']`).
