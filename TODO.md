@@ -624,7 +624,9 @@ These are requirement lines currently scoring near zero. Backend and frontend tr
 # ✅ Pre-submission checklist
 
 - [ ] `python backend/main.py` starts clean from a fresh clone
-- [x] Pipeline completes in **< 10s** on the demo dataset — **8.16s @ 2,404 events**
+- [ ] Pipeline completes in **< 10s** on the demo dataset — ❌ **~15s** measured under controlled
+      conditions (~19s over the API). The old 8–9s figures do not reproduce; see the Day 2 note.
+      **Blocked on S3.2**, which is therefore no longer optional
 - [x] `CRITICAL > 0` and **all 7 rules** fire at least once across the dataset — **CRITICAL = 5,
       zero dead rules**, guarded by `test_idr1_fires_at_least_once_on_the_demo_dataset`
 - [ ] Recall **≥75%** and precision **≥70%** under a *single* consistent threshold —
