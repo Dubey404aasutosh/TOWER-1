@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from collections import defaultdict
 
+import numpy as np
 import pandas as pd
 
 
