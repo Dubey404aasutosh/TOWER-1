@@ -151,15 +151,20 @@ def verify_against_ground_truth(scored_entities, entities=None, ground_truth_pat
 
     # --- Specificity over the clean cohort ---
     # dataset.md:71 names the line this exists to support: "0 false positives on the
-    # 40 clean entities". The denominator has to be the planted population, not every
-    # resolved entity — entity resolution also mints ~1,300 passthrough counterparties
-    # from bare account numbers, and dividing by those would report ~99.8% specificity
-    # for a detector that had done nothing. The planted people are the KYC-named ones,
-    # so the cohort is: named entities, minus the guilty ones.
-    named_entities = {eid for eid, data in (entities or {}).items() if data.get("name")}
-    clean_cohort = named_entities - detected_entity_ids
-    clean_flagged = len(clean_cohort & flagged_entities)
-    clean_total = len(clean_cohort)
+    # 40 clean entities". Getting the DENOMINATOR right is the whole exercise.
+    #
+    # Dividing by every resolved entity is the trap: entity resolution also mints
+    # ~1,300 passthrough counterparties out of bare account numbers, and the resolver
+    # gives almost all of them a name, so both "all entities" and "named entities"
+    # report ~99.8% specificity for a detector that has done nothing. The honest
+    # denominator is the planted clean population the generator recorded: 40.
+    #
+    # Every false positive is charged against those 40. If an FP were actually a
+    # passthrough counterparty rather than one of the planted people, this understates
+    # specificity — deliberately, since erring toward the worse number is the only
+    # safe direction for a figure quoted out loud.
+    clean_total = int(normal_count or 0)
+    clean_flagged = min(false_positives, clean_total) if clean_total else 0
     specificity = (clean_total - clean_flagged) / clean_total if clean_total else None
 
     # Metrics
