@@ -444,8 +444,62 @@ def test_tcs2_sim_swap_correlation_positive():
     ]
     df = pd.DataFrame(events)
 
+    # The beneficiary account literally embeds the called number, which is a link.
     fired, exp, ev = check_tcs2("ENT_TCS2", df)
     assert fired is True
+    assert any(t == "link:embedded" for t in ev)
+
+
+# --- TCS-2 requires the transfer to reach the party who was CALLED ------------
+# The rule used to fire whenever a call and a transfer merely fell in the same
+# window — its own source said so: "(simplified: any call within the window counts
+# as suspicious)". These pin the documented behaviour: a link must exist, and the
+# absence of one must keep the rule silent.
+
+def _tcs2_frame(call_party, beneficiary):
+    t0 = datetime(2025, 5, 1, 10, 0, 0)
+    return pd.DataFrame([
+        {"entity_id": "ENT_T2", "event_type": "call", "counterparty": call_party,
+         "timestamp": t0, "raw_row_ref": 1},
+        {"entity_id": "ENT_T2", "event_type": "transaction", "amount": -50000.0,
+         "counterparty": beneficiary, "timestamp": t0 + timedelta(minutes=3),
+         "raw_row_ref": 2},
+    ])
+
+
+def test_tcs2_does_not_fire_when_payee_is_unrelated_to_the_called_number():
+    """
+    A call to one person and a transfer to an unrelated account is ordinary
+    behaviour. This is the case the old implementation flagged as suspicious.
+    """
+    df = _tcs2_frame("9800000111", "ACC_UNRELATED_77771")
+    fired, exp, ev = check_tcs2("ENT_T2", df, entity_map={
+        "9800000111": "ENT_CALLEE",
+        "ACC_UNRELATED_77771": "ENT_SOMEONE_ELSE",
+    })
+    assert fired is False, "TCS-2 must not fire when the payee is not the party called"
+
+
+def test_tcs2_fires_when_entity_resolution_links_callee_to_payee():
+    """The documented link: the called number and the payee are the same person."""
+    df = _tcs2_frame("9800000222", "somebody@okaxis")
+    fired, exp, ev = check_tcs2("ENT_T2", df, entity_map={
+        "9800000222": "ENT_BPARTY",
+        "somebody@okaxis": "ENT_BPARTY",
+    })
+    assert fired is True
+    assert any(t == "link:resolved" for t in ev)
+    assert "ENT_BPARTY" in exp
+
+
+def test_tcs2_cannot_fire_without_an_entity_map():
+    """
+    With no resolution map the linkage is unknowable, so the rule stays silent
+    rather than falling back to "a call happened near a transfer".
+    """
+    df = _tcs2_frame("9800000333", "ACC_NO_RELATION_9")
+    fired, _, _ = check_tcs2("ENT_T2", df, entity_map=None)
+    assert fired is False
 
 
 # ============================================================
