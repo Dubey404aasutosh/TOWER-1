@@ -1,0 +1,25 @@
+CASE SUMMARY (INTERNAL / FICTIONAL DEMO DATA -- NOT AN OFFICIAL DOCUMENT)
+================================================================
+Case ID: CASE-GJ-02
+Title: Loan App Harassment & Extortion
+Jurisdiction: Ahmedabad Cyber Crime Cell (fictional)
+Complainant: Aadhya Hans (fictional)
+Complainant Phone: 9751867404
+Primary Suspect (per bank/telecom linkage): Yahvi Kala (fictional)
+Suspect Phone: 9550841087
+Suspect Account: 19546636166
+Suspect UPI VPA: yahvi.kala@okhdfcbank
+Suspect IMEI: 073815055049206
+
+Narrative:
+Complainant reports harassment by a fake instant-loan app operator demanding repayment at inflated rates. Suspect account below received an inbound transfer matching CASE-GJ-01's outgoing mule transaction, suggesting the same laundering network.
+
+Evidence Bundle (attached in this folder):
+  - bank_statement_CASE-GJ-02.csv  (transaction records)
+  - cdr_CASE-GJ-02.csv             (call detail records)
+  - ipdr_CASE-GJ-02.csv            (internet session records)
+
+Cross-Case Note: Suspect account 19546636166 received Rs.42,500.00 on 06-03-2026 from the CASE-GJ-01 suspect account -- see that case's evidence bundle for the outgoing-side record.
+================================================================
+This file is a synthetic demo artifact generated for a hackathon prototype.
+It does not represent any real person, account, phone number, or case.

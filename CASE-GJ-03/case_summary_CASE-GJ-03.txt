@@ -1,0 +1,25 @@
+CASE SUMMARY (INTERNAL / FICTIONAL DEMO DATA -- NOT AN OFFICIAL DOCUMENT)
+================================================================
+Case ID: CASE-GJ-03
+Title: SIM-Swap Enabled Bank Fraud
+Jurisdiction: Vadodara Cyber Crime Cell (fictional)
+Complainant: Gaurang Saxena (fictional)
+Complainant Phone: 9660334079
+Primary Suspect (per bank/telecom linkage): Bhavya Sunder (fictional)
+Suspect Phone: 9618823344
+Suspect Account: 65972784280
+Suspect UPI VPA: bhavya.sunder@ybl
+Suspect IMEI: 110958719972238
+
+Narrative:
+Complainant reports unauthorized transactions following a suspected SIM-swap. Investigation surfaced a call from a number also linked to CASE-GJ-01, suggesting the same handler coordinated both operations.
+
+Evidence Bundle (attached in this folder):
+  - bank_statement_CASE-GJ-03.csv  (transaction records)
+  - cdr_CASE-GJ-03.csv             (call detail records)
+  - ipdr_CASE-GJ-03.csv            (internet session records)
+
+Cross-Case Note: Suspect in this case received a call from 9782373836 on 10-03-2026, a number that is the primary suspect number in CASE-GJ-01 -- see that case's CDR export.
+================================================================
+This file is a synthetic demo artifact generated for a hackathon prototype.
+It does not represent any real person, account, phone number, or case.

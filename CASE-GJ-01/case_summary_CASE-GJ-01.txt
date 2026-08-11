@@ -1,0 +1,25 @@
+CASE SUMMARY (INTERNAL / FICTIONAL DEMO DATA -- NOT AN OFFICIAL DOCUMENT)
+================================================================
+Case ID: CASE-GJ-01
+Title: Fake Investment Trading App Fraud
+Jurisdiction: Surat Cyber Crime Cell (fictional)
+Complainant: Falguni Sarma (fictional)
+Complainant Phone: 9720901273
+Primary Suspect (per bank/telecom linkage): Jagrati Sibal (fictional)
+Suspect Phone: 9782373836
+Suspect Account: 708393473571
+Suspect UPI VPA: jagrati.sibal@ybl
+Suspect IMEI: 432178537536631
+
+Narrative:
+Complainant reports being lured via a WhatsApp investment group into depositing funds through a fake trading app. Funds were routed to the suspect account below, then rapidly transferred onward to a second account (see Cross-Case Note).
+
+Evidence Bundle (attached in this folder):
+  - bank_statement_CASE-GJ-01.csv  (transaction records)
+  - cdr_CASE-GJ-01.csv             (call detail records)
+  - ipdr_CASE-GJ-01.csv            (internet session records)
+
+Cross-Case Note: Outgoing transfer of Rs.42,500.00 on 06-03-2026 was made to account 19546636166, which is the primary suspect account in CASE-GJ-02. Also, phone 9782373836 associated with this case placed a call linked to CASE-GJ-03 on 10-03-2026.
+================================================================
+This file is a synthetic demo artifact generated for a hackathon prototype.
+It does not represent any real person, account, phone number, or case.
