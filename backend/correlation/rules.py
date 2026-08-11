@@ -1168,8 +1168,10 @@ def run_all_rules(entities, all_events_df, enriched_txns, entity_map=None, windo
             entity_results["evidence"]["TCS-1"] = evidence
             entity_results["rule_severities"]["TCS-1"] = "MEDIUM"
 
-        # TCS-2: Call-Then-Transfer
-        fired, explanation, evidence = check_tcs2(entity_id, entity_df, window_minutes)
+        # TCS-2: Call-Then-Transfer. entity_map is what makes the link check
+        # possible — it resolves a called number and a beneficiary VPA to entities.
+        fired, explanation, evidence = check_tcs2(entity_id, entity_df, window_minutes,
+                                                   entity_map=entity_map)
         if fired:
             entity_results["rules_fired"].append("TCS-2")
             entity_results["explanations"]["TCS-2"] = explanation
