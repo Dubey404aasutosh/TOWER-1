@@ -865,13 +865,23 @@ def check_mul1(entity_id, all_events_df, dormancy_days=30, outflow_pct=0.80):
         if outflow_ratio >= outflow_pct:
             evidence = [f"row_{credit_row['raw_row_ref']}"]
             evidence.extend([f"row_{r['raw_row_ref']}" for _, r in subsequent_debits.iterrows()])
+            retained = credit_amount - total_outflow
+            evidence.extend([
+                f"inflow:{credit_amount:.0f}",
+                f"outflow:{total_outflow:.0f}",
+                f"retained:{retained:.0f}",
+                f"prior_txns_in_dormancy:{len(prior_activity)}",
+            ])
 
             explanation = (
-                f"Mule Signature detected: entity {entity_id} was dormant for {dormancy_days}+ days, "
-                f"received {credit_amount:.0f}, then moved {total_outflow:.0f} "
-                f"({outflow_ratio:.0%} of inflow) within "
-                f"{(subsequent_debits['timestamp'].max() - credit_time).total_seconds() / 3600:.1f} hours. "
-                f"Balance returned near-zero."
+                f"Mule Signature detected: entity {entity_id} had no activity for "
+                f"{dormancy_days} days, received {credit_amount:.0f}, then moved "
+                f"{total_outflow:.0f} ({outflow_ratio:.0%} of the inflow) within "
+                f"{(subsequent_debits['timestamp'].max() - credit_time).total_seconds() / 3600:.1f} hours, "
+                # The old text asserted "Balance returned near-zero" — but no balance
+                # column reaches the event schema, so that was a claim the engine had
+                # no way to check. Retention is derived from the amounts it did read.
+                f"retaining only {retained:.0f} of it."
             )
             _append_trace(entity_id, "MUL-1", evidence, explanation)
             return True, explanation, evidence
