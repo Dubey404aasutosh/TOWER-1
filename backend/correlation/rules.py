@@ -798,6 +798,13 @@ def check_lay1(entity_id, all_events_df, entity_map=None, min_hops=3, max_hours=
 # ============================================================
 # RULE MUL-1: Mule Signature
 # ============================================================
+# MUL-1 thresholds, named so they can be argued with rather than reverse-engineered.
+# The mule typology is "dormant account, sudden LARGE inflow, near-total outflow".
+MUL1_MIN_INFLOW = 100_000    # absolute floor for "large" — a salary credit is not a mule inflow
+MUL1_MAX_PRIOR_TXNS = 0      # "dormant" means no real activity in the dormancy window
+MUL1_MICRO_TXN = 10          # rupee value below which a row is noise, not activity
+
+
 def check_mul1(entity_id, all_events_df, dormancy_days=30, outflow_pct=0.80):
     """
     MUL-1: Mule Signature
