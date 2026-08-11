@@ -1843,7 +1843,42 @@ function renderTimelineSummary(payload) {
     <span class="tag ${tierClass}">${escapeHTML(payload.risk_tier || 'LOW')}</span>
     ${(payload.rules_fired || []).map(r => `<span class="rule-chip">${escapeHTML(r)}</span>`).join('')}
     <span class="tl-counts">${escapeHTML(lanes)}${payload.correlations?.length
-      ? ` · <b>${payload.correlations.length} correlation window${payload.correlations.length > 1 ? 's' : ''}</b>` : ''}</span>`;
+      ? ` · <b>${payload.correlations.length} correlation window${payload.correlations.length > 1 ? 's' : ''}</b>` : ''}</span>
+    ${payload.is_preview ? `
+      <span class="tl-preview-flag">
+        <i class="fa-solid fa-flask"></i>
+        Preview at W = ±${payload.window_minutes} min — the rules fired at
+        ±${payload.pipeline_window_minutes} min, so the tier and rule chips above are unchanged.
+        <button class="btn btn-ghost btn-sm" onclick="applyWindowToAnalysis()">
+          <i class="fa-solid fa-rotate"></i> Apply to analysis
+        </button>
+      </span>` : ''}`;
+}
+
+/* Re-run the whole pipeline at the previewed W so the rules actually fire on it.
+   This costs a full re-analysis (~15s), which is why changing W only previews by
+   default — but a preview a judge cannot commit would be a tease, so this is the
+   path that makes the exposed parameter real. */
+async function applyWindowToAnalysis() {
+  const w = appState.windowMinutes || 10;
+  const el = document.getElementById('timeline-summary');
+  if (el) el.innerHTML = `<span class="tl-empty"><i class="fa-solid fa-spinner fa-spin"></i>
+    Re-running the full analysis at W = ±${w} min…</span>`;
+  try {
+    const body = new FormData();
+    body.append('window_minutes', String(w));
+    const res = await fetch(`${API_BASE}/api/run-pipeline`, { method: 'POST', body });
+    if (!res.ok) throw new Error(`pipeline ${res.status}`);
+    TRACE_CACHE.clear();
+    networkViews = null;
+    await fetchRealResults();
+    await fetchVerificationSummary();
+    await loadTimeline(timelineState.entityId);
+  } catch (e) {
+    if (el) el.innerHTML = `<span class="tl-empty">
+      <i class="fa-solid fa-triangle-exclamation"></i>
+      Re-analysis failed (${escapeHTML(String(e.message || e))}).</span>`;
+  }
 }
 
 function renderTimelineZoomPresets(payload) {
