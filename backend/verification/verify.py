@@ -146,7 +146,21 @@ def verify_against_ground_truth(scored_entities, entities=None, ground_truth_pat
         })
 
     # False positives: entities flagged HIGH/CRITICAL but not matched to any GT entity
-    false_positives = len(flagged_entities - detected_entity_ids)
+    false_positive_ids = sorted(flagged_entities - detected_entity_ids)
+    false_positives = len(false_positive_ids)
+
+    # --- Specificity over the clean cohort ---
+    # dataset.md:71 names the line this exists to support: "0 false positives on the
+    # 40 clean entities". The denominator has to be the planted population, not every
+    # resolved entity — entity resolution also mints ~1,300 passthrough counterparties
+    # from bare account numbers, and dividing by those would report ~99.8% specificity
+    # for a detector that had done nothing. The planted people are the KYC-named ones,
+    # so the cohort is: named entities, minus the guilty ones.
+    named_entities = {eid for eid, data in (entities or {}).items() if data.get("name")}
+    clean_cohort = named_entities - detected_entity_ids
+    clean_flagged = len(clean_cohort & flagged_entities)
+    clean_total = len(clean_cohort)
+    specificity = (clean_total - clean_flagged) / clean_total if clean_total else None
 
     # Metrics
     recall = true_positives / max(len(gt_entries), 1)
@@ -158,10 +172,17 @@ def verify_against_ground_truth(scored_entities, entities=None, ground_truth_pat
         "total_flagged": len(flagged_entities),
         "true_positives": true_positives,
         "false_positives": false_positives,
+        "false_positive_ids": false_positive_ids,
         "false_negatives": false_negatives,
         "recall": recall,
         "precision": precision,
         "f1": f1,
+        # Reported with its denominator attached so the number cannot be quoted
+        # without the population it was computed over.
+        "specificity": specificity,
+        "clean_entities_evaluated": clean_total,
+        "clean_entities_flagged": clean_flagged,
+        "threshold": "HIGH or CRITICAL (identical for true and false positives)",
         "typology_results": typology_results,
     }
 
