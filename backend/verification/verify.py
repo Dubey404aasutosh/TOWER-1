@@ -167,6 +167,35 @@ def verify_against_ground_truth(scored_entities, entities=None, ground_truth_pat
     clean_flagged = min(false_positives, clean_total) if clean_total else 0
     specificity = (clean_total - clean_flagged) / clean_total if clean_total else None
 
+    # --- Why each false positive happened -------------------------------------
+    # Annotation only. This NEVER changes true/false positive counts: grading a
+    # detector by its own output would be circular, and the strict number above is
+    # the one that gets published.
+    #
+    # It exists because `generate_all.py:421` builds the layering chain as
+    # `[guilty_entity] + random.sample(normal_pool, 3)` — the generator routes
+    # laundered money through three accounts it drew from the CLEAN pool, then marks
+    # only the originator guilty in ground_truth.json. An engine that follows the
+    # money necessarily flags those hops, and is then penalised for being right.
+    # Saying so precisely is worth more than a metric tuned until it looks better.
+    chain_members = set()
+    for data in scored_entities.values():
+        for token in (data.get("evidence", {}) or {}).get("LAY-1", []) or []:
+            if isinstance(token, str) and token.startswith("chain:"):
+                chain_members.update(p for p in token[len("chain:"):].split(">") if p)
+
+    false_positive_notes = {}
+    for fp in false_positive_ids:
+        if fp in chain_members:
+            false_positive_notes[fp] = (
+                "sits on a detected layering chain — the generator samples chain "
+                "intermediaries from the clean pool (generate_all.py:421), so ground "
+                "truth labels this entity clean while planting laundered funds through it"
+            )
+        else:
+            rules = scored_entities.get(fp, {}).get("rules_fired", [])
+            false_positive_notes[fp] = f"flagged on {', '.join(rules) or 'no rules'} with no ground-truth match"
+
     # Metrics
     recall = true_positives / max(len(gt_entries), 1)
     precision = true_positives / max(true_positives + false_positives, 1)
@@ -188,6 +217,7 @@ def verify_against_ground_truth(scored_entities, entities=None, ground_truth_pat
         "clean_entities_evaluated": clean_total,
         "clean_entities_flagged": clean_flagged,
         "threshold": "HIGH or CRITICAL (identical for true and false positives)",
+        "false_positive_notes": false_positive_notes,
         "typology_results": typology_results,
     }
 
@@ -208,7 +238,9 @@ def verify_against_ground_truth(scored_entities, entities=None, ground_truth_pat
         print(f"SPECIFICITY: {specificity:.2%} "
               f"({clean_total - clean_flagged} of {clean_total} planted clean entities left unflagged)")
     if false_positive_ids:
-        print(f"False positives: {', '.join(false_positive_ids)}")
+        print("False positives:")
+        for fp in false_positive_ids:
+            print(f"  - {fp}: {false_positive_notes.get(fp, '')}")
 
     print(f"\nPer-typology breakdown:")
     for r in typology_results:

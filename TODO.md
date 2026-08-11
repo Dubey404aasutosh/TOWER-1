@@ -15,8 +15,11 @@ timeline view live · network filters live · evidence drill-down live · `.docx
 **All five Day 2 items are done.** Precision is unchanged and still the S3.1 labelling artifact —
 IDR-1 added a firing on an entity that was already flagged, so it could not move the number either way.
 
-> ⚠️ **Pipeline runtime is ~15s, not the 8–9s previously recorded. The "< 10s" line is NOT met,
-> and S3.2 is now mandatory rather than optional.**
+> ✅ **Resolved on Day 3 by S3.2 — the pipeline is now ~5.7s.** The note below is kept because
+> the methodology is what makes the before/after credible.
+>
+> ~~⚠️ **Pipeline runtime is ~15s, not the 8–9s previously recorded. The "< 10s" line is NOT met,
+> and S3.2 is now mandatory rather than optional.**~~
 >
 > Controlled measurement — one process, `gc.collect()` between runs, stdout suppressed so print
 > I/O is not being timed — gives **14.59 / 15.32 / 14.59 / 15.25 / 14.61 / 15.06 s
@@ -563,16 +566,63 @@ These are requirement lines currently scoring near zero. Backend and frontend tr
 
 ---
 
-# 🟡 P2 — DAY 3 · Metrics integrity, performance, demo prep (~7h)
+# 🟡 P2 — DAY 3 · Metrics integrity, performance, demo prep (~7h) — ✅ **DONE**
 
-- [ ] **S3.1 — Fix the verification metric (it inflates recall)** ⏱ 1h
+> **Day 3 completed & verified.** `pytest backend/tests/` → **57 passed** (was 54).
+> Measured with the methodology this file specifies — one process, `gc` between runs, stdout
+> captured so print I/O is not being timed:
+>
+> | | After Day 2 | After Day 3 |
+> |---|---|---|
+> | Pipeline runtime | ~15s | **5.51 / 5.65 / 5.74 / 5.79 / 6.01 s — median 5.74s** |
+> | risk + ML scoring | 2.2–4.5s | **0.52s** |
+> | Metric threshold | TP at any tier, FP at HIGH/CRITICAL | **one threshold on both sides** |
+> | Specificity | never computed | **92.5%** — 37 of 40 planted clean entities unflagged |
+> | TCS-2 firings | 7 (no link check) | **4** (link verified) |
+> | Leaflet map | `initMap()` never called — blank div | **live**, 10 towers from the API |
+> | Recall / Precision / F1 | 100% / 62.5% / 76.9% | **unchanged** |
+>
+> **Demo rehearsed twice in headless Chrome** — all 10 beats, **45.7s of walk time, 0 console
+> errors**, every step asserted against the live DOM rather than eyeballed.
+>
+> ⚠️ **Precision stays 62.5%, and that is the number to say out loud.** Unifying the metric did
+> not move it, because all three false positives were already HIGH/CRITICAL. Two of them are now
+> *proven* labelling artifacts rather than suspected ones — see S3.1.
+>
+> ⚠️ **Slowest demo beat is step 3**, the identity view: vis.js stabilises 1,508 nodes in ~13.5s.
+> Nothing is broken, but it is dead air on stage. Open the network view before you need it.
+
+
+- [x] **S3.1 — Fix the verification metric (it inflates recall)** ⏱ 1h
   - `backend/verification/verify.py:112-134` counts a TP if **any** rule fired at **any** tier; `:147` counts FPs at **HIGH/CRITICAL only**. Two thresholds on two sides of the same metric.
   - Honest strict numbers today: **recall 60%, precision 60%** (reported: 80% / 66.7%).
   - Unify the threshold, then **add specificity over the 40 clean entities** — `dataset.md:71` calls this the killer demo line and it is never computed.
   - Bonus if time: consume `expected_flagged_rows` from `ground_truth.json` for **row-level** precision. It's generated every run and thrown away — no other team will have this.
   - ⚠️ Fix this *after* S1.1/S1.3 so the number you publish is the improved one.
+  - **✅ Shipped. One threshold on both sides.** TP required `flagged OR any rule at any tier`
+    while FP required `HIGH/CRITICAL` — a guilty entity at MEDIUM scored as a hit, but a clean
+    entity at MEDIUM was not a miss. Both sides are now "HIGH or CRITICAL", and the response
+    carries the threshold as a string so the ratio cannot be quoted without it.
+  - 📊 **Recall did NOT fall when the metric was tightened** — it stayed 100%, because Days 0–2
+    pushed all five planted typologies to HIGH/CRITICAL. The strict number and the flattering
+    number now agree, which is the outcome worth having.
+  - **Specificity: 92.5% — 37 of 40 planted clean entities left unflagged.** The denominator is
+    the whole exercise. My first attempt divided by "KYC-named entities" and returned **99.78%**,
+    because the resolver also names ~1,363 passthrough counterparties — any population that
+    includes them reports near-perfect specificity for a detector that has done nothing. The
+    denominator is now the generator's own `normal_entities: 40`, every FP is charged against it,
+    and the count is printed beside the percentage in the CLI, the API and the KPI tile.
+  - **Each false positive explains itself, and two are vindicated.** `generate_all.py:421` builds
+    the chain as `[guilty] + random.sample(clean_pool, 3)` — the generator routes laundered money
+    through three accounts drawn from the CLEAN pool, then marks only the originator guilty.
+    `ENT_0007` and `ENT_0014` are those hops. **The score was NOT adjusted for this** — grading a
+    detector with its own output is circular. The annotation ships beside the unchanged number.
+  - ⏭ **Not done: row-level precision.** Checked, then deliberately skipped — ground truth numbers
+    rows in a different index space from the engine's `raw_row_ref` (`bank_row_2127` vs `row_210`
+    for the same entity), so it needs a mapping, not an afternoon. A wrong number beats no number
+    only if it is right.
 
-- [ ] **S3.2 — Kill the O(N²) hot loop** ⏱ 1.5h 🔴 **PROMOTED — no longer optional (Day 2 finding)**
+- [x] **S3.2 — Kill the O(N²) hot loop** ⏱ 1.5h 🔴 **PROMOTED — no longer optional (Day 2 finding)**
   - 📊 **Re-measured on Day 2 and the target is missed by 50%:** the pipeline is **~15s**, not the
     8–9s on record, so the "< 10s" pre-submission line fails without this. Step profile, 3 trials:
     rule engine **3.1–6.7s**, risk/ML **2.2–4.5s**, ingestion **1.5–3.1s**, temporal join
@@ -587,25 +637,94 @@ These are requirement lines currently scoring near zero. Backend and frontend tr
   - Also skip the 1,476 event-less passthrough entities in the rule loop (the fast-path guard at `rules.py:784` misses them because counterparty accounts populate `entity_data['accounts']`).
   - 📊 **Measured:** risk/ML 5.1s @1× → **236s @25×**. Rule engine 10.8s. Ingestion 8.0s (`df.iterrows()`).
   - 🎯 27.3s → **~5s**. Then re-run `backend/verification/benchmark.py` and put the **before/after table on a slide** — evaluation criterion #5 answered with data, which most teams cannot do.
+  - **✅ Shipped — ~15s → 5.74s median (min 5.51, max 6.01 over 5 runs). Target met.**
+    The named fix was the whole win: `compute_ml_anomaly` re-scanned all 2,404 rows once per
+    entity across 1,368 entities. One `dict(tuple(df.groupby('entity_id')))` plus an early skip
+    for the ~1,200 event-less passthrough entities took that step **2.2–4.5s → 0.52s**.
+  - ✅ **Provably behaviour-preserving:** recall, precision, tier distribution and every rule
+    firing count are identical before and after. A performance change that alters detection is a
+    detection change wearing a disguise.
+  - 📌 **The second half of this item did not apply.** It says the rule loop's fast path misses
+    ~1,476 passthrough entities — profiling shows only **118 entities** ever reach the rules, so
+    that guard already works. The remaining cost is real work on real entities, dominated by
+    `check_tcs2` (~36% of it), which **S3.3** rewrote with an indexed window scan — so that cost
+    fell as a side effect of the correctness fix.
 
-- [ ] **S3.3 — TCS-2: implement the missing link check** ⏱ 1h
+- [x] **S3.3 — TCS-2: implement the missing link check** ⏱ 1h
   - `backend/correlation/rules.py:254` admits it: `# (simplified: any call within the window counts as suspicious)`. The condition is only `if call_party and txn_counterparty:` — both strings non-empty.
   - The documented rule requires the transfer to go **to an account/VPA linked to the called number**. Without it, TCS-2 fires on ordinary background behaviour.
   - ⚠️ This is exactly the *"how did you get this score?"* question from `solution.md:26`. Fix it or explicitly rename the rule to what it actually does.
+  - **✅ Fixed, not renamed.** The link is verified two ways, both recorded in evidence:
+    **resolved** — called number and beneficiary account/VPA resolve to the same entity via
+    `entity_map`; **embedded** — the payee VPA literally contains the called number, which is how
+    UPI handles are routinely formed. With no `entity_map` the link is unknowable and the rule
+    stays silent rather than reverting to the old behaviour.
+  - 📊 **TCS-2: 7 firings → 4.** The three removed are exactly what the old comment admitted to —
+    a call and a transfer that merely shared a window. MEDIUM entities dropped 4 → 1. Recall
+    unaffected; `E042`'s TCS-2 is genuine and still fires.
+  - Three tests added, including the one that would have caught this:
+    `test_tcs2_does_not_fire_when_payee_is_unrelated_to_the_called_number`. The pre-existing
+    positive test still passes — legitimately, since its fixture pays `ACC_9800000002` after
+    calling `9800000002`, which is an embedded link.
+  - ⚡ Rewritten with `np.searchsorted` over sorted call times instead of rebuilding a boolean
+    mask plus `iterrows()` per transaction — this was the rule engine's single largest cost.
 
-- [ ] **S3.4 — MUL-1: stop the false positive** ⏱ 1h
+- [x] **S3.4 — MUL-1: stop the false positive** ⏱ 1h
   - `rules.py:475`: `credit_amount < median_credit * 3` lets an ordinary ₹70k salary credit qualify as a "large suspicious inflow" (this produced the ENT_0272 FP).
   - Add an absolute floor; tighten the dormancy test (`len(prior_activity) > 2` currently calls 2 transactions in 30 days "dormant").
   - The explanation asserts *"Balance returned near-zero"* without ever reading a balance column — either read it or delete the claim.
+  - **✅ Shipped, thresholds named:** `MUL1_MIN_INFLOW = ₹1,00,000`, `MUL1_MAX_PRIOR_TXNS = 0`,
+    `MUL1_MICRO_TXN = ₹10`.
+  - The FP came from a test that was an OR in disguise: `credit < 100000 AND credit < median*3`
+    admitted any credit on the relative branch alone, so an ordinary salary landing in a quiet
+    account read as a "large suspicious inflow". That branch is gone; an absolute floor replaces
+    it. Dormancy now means dormant — the old allowance permitted two real transactions inside the
+    30-day window and still called the account inactive.
+  - **The balance claim is deleted, because it could not be checked.** `balance_col` is mapped in
+    both bank parsers and then never written into the event dict, and `schema.Event` has no
+    balance field — the sentence was unverifiable from anything the engine had read. The
+    explanation now reports the residual it can derive (`inflow − outflow`), and the evidence
+    carries `inflow:`, `outflow:`, `retained:` and `prior_txns_in_dormancy:` tokens.
+  - 📌 `ENT_0272`, the FP this item names, had already stopped firing before Day 3 — the
+    tightening guards against its return rather than fixing a live defect.
 
-- [ ] **S3.5 — Reconcile the docs with reality** ⏱ 1h
+- [x] **S3.5 — Reconcile the docs with reality** ⏱ 1h
   - `README.md` currently overstates: "7 Deterministic Forensic Rules" (2 dead pre-S1.1), "Leaflet.js Geo Map" (`initMap()` at `app.js:1397` is **never called** — the map is a blank div), "Word/PDF" reports (Word only), "Hash-stamped audit logging" (**no `hashlib` anywhere in the backend**).
   - `master_prompt.md:131` requires "runs in seconds" — currently 27.3s.
   - IDR-1's documented definition (*"3+ accounts or 2+ IMEIs"*, `correlation.md:69`) does not match the implementation (consecutive IMEI/IMSI change). Pick one and make README + `correlation.md` + the rule agree.
   - ⚠️ Docs that overstate are worse than absent in front of a panel that will click.
+  - **✅ Shipped. Every claim was re-checked against the code, not taken from the list above.**
+    "Word/PDF" → Word only, stated explicitly (there is no PDF path in `report/`).
+    "Hash-stamped audit logging" → rewritten to what exists: `hashlib` SHA-256 over every ingested
+    file at ingest, re-verified on request. "7 Deterministic Forensic Rules" → true as of S1.6,
+    and asserted by a test.
+  - 🗺️ **The Leaflet map was fixed rather than downgraded.** `initMap()` was defined and called
+    from nowhere, so a nav item advertised a geo map and opened a blank div. It is now invoked on
+    view switch, plots `map_towers` from `/api/results` (the same tower master LOC-1 geolocates
+    against) instead of its hardcoded list, calls `invalidateSize()` because the container is
+    `display:none` until activated, and states its tower count on screen. Verified live:
+    **20 markers, 20 tiles, "10 cell towers from the active tower master"**.
+  - **Four rule descriptions contradicted their implementations** and were rewritten: MUL-1
+    (≥85% → ≥80% with a ₹1L floor), TCS-2 (now states the link requirement), LOC-1 (documented as
+    a KYC-city comparison; it is a >200 km/h Haversine impossible-travel check), LAY-1 (now states
+    the 3–20% skim band, ₹50k floor, 6-hop bound and real cycle detection).
+  - Added a **Measured Performance & Accuracy** table to the README — runtime, recall, precision,
+    specificity, parse rate, test count — every figure recomputed per run, with the 62.5%
+    precision explained rather than hidden.
 
-- [ ] **S3.6 — Rehearse the demo end-to-end, twice** ⏱ 1.5h 🔴
+- [x] **S3.6 — Rehearse the demo end-to-end, twice** ⏱ 1.5h 🔴
   - See the script below. Time it. Fix whatever breaks. **Do not skip this** — an untested demo path is how a working system loses.
+  - **✅ Rehearsed twice in headless Chrome. All 10 beats, 45.7s of walk time, 0 console errors.**
+    Each step asserted against the live DOM: evidence vault lists all 5 sources; KPI reads 1,368
+    entities / 2,404 events / 5 CRITICAL / 7-of-7 rules; identity canvas 892×625 over 1,508 nodes;
+    money-flow 154 nodes / 617 edges with 4 layering hops at
+    ₹228,215 / ₹253,828 / ₹200,829 / ₹275,659; the chain filter isolates 4 of 154; `ENT_0042`
+    yields 3 evidence blocks citing `bank row 215` + `cdr row 1016` + `ipdr row 545`; the timeline
+    lands on *+₹5,00,000 · bank_icici.pdf · row 190*; the map draws 20 markers; the reports panel
+    shows 8 cards / 16 links / **0 broken**.
+  - 📌 Run 1 showed three `ERR_CONNECTION_REFUSED` failures that were **not** a product fault: a
+    stale headless-Chrome profile served a cached bundle. The endpoints answered 200 in 20–40 ms
+    throughout and run 2 was clean. Recorded because it cost real time to chase twice.
 
 ---
 
@@ -654,26 +773,35 @@ These are requirement lines currently scoring near zero. Backend and frontend tr
 
 # ✅ Pre-submission checklist
 
-- [ ] `python backend/main.py` starts clean from a fresh clone
-- [ ] Pipeline completes in **< 10s** on the demo dataset — ❌ **~15s** measured under controlled
-      conditions (~19s over the API). The old 8–9s figures do not reproduce; see the Day 2 note.
-      **Blocked on S3.2**, which is therefore no longer optional
+- [x] `python backend/main.py` starts clean from a fresh clone — verified on Day 3 via the exact
+      command the README gives: no traceback on stderr, startup pipeline completes, and
+      `/`, `/dashboard`, `/api/results`, `/api/verification-summary` and
+      `/api/entity/{id}/timeline` all return 200
+- [x] Pipeline completes in **< 10s** on the demo dataset — ✅ **5.74s median** (min 5.51, max 6.01
+      over 5 controlled runs) after S3.2. Was ~15s at the end of Day 2
 - [x] `CRITICAL > 0` and **all 7 rules** fire at least once across the dataset — **CRITICAL = 5,
       zero dead rules**, guarded by `test_idr1_fires_at_least_once_on_the_demo_dataset`
-- [ ] Recall **≥75%** and precision **≥70%** under a *single* consistent threshold —
-      recall **100%** ✅, precision **62.5%** ❌ pending **S3.1** (labelling artifact, not detection)
-- [ ] No number on any screen is hardcoded — swap in a different dataset and verify everything moves
-      *(re-verify on Day 3: the Reports panel and the timeline entity list became data-driven on Day 2)*
+- [~] Recall **≥75%** and precision **≥70%** under a *single* consistent threshold — the threshold
+      is now single and consistent (S3.1). Recall **100%** ✅. Precision **62.5%** ❌ — and it stays
+      there deliberately: 2 of the 3 false positives are the laundering chain's own intermediaries,
+      which `generate_all.py:421` samples from the clean pool and ground truth then labels innocent.
+      Verified in the generator, annotated in the output, **not** tuned away. Also now reported:
+      **specificity 92.5%** over the 40 planted clean entities
+- [x] No number on any screen is hardcoded — the last two holdouts went on Day 3: the cell-tower map
+      now plots `map_towers` from the API rather than a built-in list, and the accuracy tile carries
+      live specificity with its denominator. A dataset swap moves every tile (verified on Day 0)
 - [x] **No fabricated hash, size, or row count anywhere in the UI** — plus the invented case
       numbers, dates and "SEALED" statuses in `MOCK_REPORTS` are gone
 - [x] Money-flow graph renders with real edges; clicking a node shows real evidence rows
 - [x] Timeline view renders for at least one flagged entity — renders for all 8, demo on `ENT_0043`
 - [x] Sample `.docx` (forensic + STR) committed **with charts embedded** —
       `backend/reports/sample_*.docx`, whitelisted by prefix and no longer deleted by a pipeline run
-- [ ] `README.md` describes only what actually works — IDR-1's entry corrected on Day 2;
-      the Leaflet / hash-logging / Word-vs-PDF claims are still **S3.5**
-- [x] `pytest backend/tests/` passes with the tautologies removed — **54 passed**
-- [ ] Demo rehearsed twice, end to end, timed
+- [x] `README.md` describes only what actually works — every claim re-checked against the code on
+      Day 3. Word-only stated, hashing described as what it is, the Leaflet map **fixed** rather than
+      downgraded, and four rule descriptions that contradicted their implementations rewritten
+- [x] `pytest backend/tests/` passes with the tautologies removed — **57 passed**
+- [x] Demo rehearsed twice, end to end, timed — **10 beats, 45.7s, 0 console errors**, every step
+      asserted against the live DOM
 
 ---
 

@@ -646,7 +646,14 @@ function switchView(viewId, navEl) {
   // The timeline measures its own SVG width, so it can only be laid out once its
   // view is actually visible — same reason the network graph is built here.
   if (targetId === 'timeline') { setTimeout(initTimeline, 80); }
-  if (targetId === 'map') { setTimeout(() => { if (appState.mapInstance) appState.mapInstance.invalidateSize(); }, 200); }
+  // initMap() existed but was never called from anywhere, so the map view was a
+  // blank div while the README advertised a Leaflet geo map.
+  if (targetId === 'map') {
+    setTimeout(() => {
+      initMap();
+      if (appState.mapInstance) appState.mapInstance.invalidateSize();
+    }, 120);
+  }
 }
 
 /* ── KPI COUNTERS ───────────────────────────────────────────────── */
@@ -1652,25 +1659,45 @@ function initMap() {
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
-  const towers = [
-    { lat: 21.1702, lon: 72.8311, area: 'Athwa Gate' },
-    { lat: 21.1860, lon: 72.7933, area: 'Adajan' },
-    { lat: 21.2148, lon: 72.8470, area: 'Katargam' },
-    { lat: 21.1565, lon: 72.7710, area: 'Vesu' },
-    { lat: 21.2050, lon: 72.8630, area: 'Varachha' },
-    { lat: 21.1980, lon: 72.8150, area: 'Ring Road' },
-    { lat: 21.1690, lon: 72.7880, area: 'Piplod' },
-    { lat: 21.1780, lon: 72.8550, area: 'Udhna' },
-    { lat: 21.1450, lon: 72.7650, area: 'Dumas Road' },
-    { lat: 21.2280, lon: 72.8380, area: 'Sachin GIDC' },
-  ];
+  // Towers come from /api/results (`map_towers`, served from the tower master the
+  // LOC-1 rule geolocates against), so the map plots the same coordinates the
+  // engine reasoned over. The hardcoded list below is only a fallback for when the
+  // backend is unreachable — previously it was the sole source, which meant the map
+  // could not move if the dataset did.
+  const apiTowers = (appState.results && appState.results.map_towers) || [];
+  const towers = apiTowers.length
+    ? apiTowers.map(t => ({ lat: t.lat, lon: t.lon, area: t.area, id: t.id }))
+    : [
+      { lat: 21.1702, lon: 72.8311, area: 'Athwa Gate' },
+      { lat: 21.1860, lon: 72.7933, area: 'Adajan' },
+      { lat: 21.2148, lon: 72.8470, area: 'Katargam' },
+      { lat: 21.1565, lon: 72.7710, area: 'Vesu' },
+      { lat: 21.2050, lon: 72.8630, area: 'Varachha' },
+      { lat: 21.1980, lon: 72.8150, area: 'Ring Road' },
+      { lat: 21.1690, lon: 72.7880, area: 'Piplod' },
+      { lat: 21.1780, lon: 72.8550, area: 'Udhna' },
+      { lat: 21.1450, lon: 72.7650, area: 'Dumas Road' },
+      { lat: 21.2280, lon: 72.8380, area: 'Sachin GIDC' },
+    ];
+
+  const meta = document.getElementById('map-meta');
+  if (meta) {
+    meta.textContent = apiTowers.length
+      ? `${apiTowers.length} cell towers from the active tower master`
+      : 'Backend unreachable — showing built-in Surat tower reference set';
+  }
 
   towers.forEach(t => {
     L.circle([t.lat, t.lon], { color: '#3D7CFF', fillColor: '#3D7CFF', fillOpacity: 0.07, radius: 500, weight: 1, dashArray: '4,6' }).addTo(map);
     L.circleMarker([t.lat, t.lon], { radius: 7, fillColor: '#3D7CFF', color: '#6ba3ff', weight: 2, fillOpacity: 1 })
-      .bindPopup(`<strong style="color:#3D7CFF;">${t.area}</strong><br>Cell Tower`)
+      .bindPopup(`<strong style="color:#3D7CFF;">${t.area}</strong><br>Cell Tower${t.id ? ' ' + t.id : ''}`)
       .addTo(map);
   });
+
+  // Leaflet measures the container on creation; this view is display:none until
+  // switchView activates it, so without this the tiles lay out against a zero-height
+  // box and the map renders as a grey strip.
+  setTimeout(() => map.invalidateSize(), 60);
 }
 
 /* ══ UNIFIED EVIDENTIARY TIMELINE (S2.1 · FR-II.a) ═══════════════════
