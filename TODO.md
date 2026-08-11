@@ -461,6 +461,28 @@ These are requirement lines currently scoring near zero. Backend and frontend tr
     154 nodes and 4 edges before that, which buried the answer in stranded dots. Verified live:
     tier=CRITICAL → **5 nodes**, rule=LAY-1 → **3 nodes**, "Layering chain" → **4 nodes / 4 edges**,
     amount ≥₹1,00,200 → **165 of 617 edges**, city=Chennai → **1 node**, identity "Phone" → 47 nodes.
+  - **W, the correlation window, is now exposed in the UI** — the one item in this list that was
+    missed on the first pass. `/api/run-pipeline` was being POSTed **with no body at all**, so its
+    `window_minutes` parameter always fell back to the default and no control could have had any
+    effect. Two things were needed, not one:
+    **(a)** the pipeline run now sends the selected W; **(b)** `/api/entity/{id}/timeline` accepts
+    `?window_minutes=`, which re-joins *that entity's* events at the requested W in milliseconds
+    instead of the ~15s a full re-analysis costs — so W is explorable on the screen that actually
+    draws it as a shaded band. `correlation.md:55` asks for exactly this and calls it the seed for
+    the natural-language-query bonus.
+  - ⚠️ **Widening W previews; it does not re-detect.** More coincidences appear, but the rules
+    fired at the pipeline's W, so the payload carries `is_preview` and the UI says so in words —
+    *"Preview at W = ±30 min — the rules fired at ±10 min, so the tier and rule chips above are
+    unchanged"* — with an **Apply to analysis** button that re-runs for real. A widened window
+    silently implying a detection that never happened is the same class of dishonesty as the
+    fabricated hashes. Measured on `ENT_0043`: W=±5 → **1** window, ±10 → **2**, ±15 → **2**,
+    ±30 → **4**, ±60 → **6**; Apply at W=30 re-runs and clears the preview flag.
+  - 🐛 **Found via that second re-run: `fetchVerificationSummary()` threw on every call after the
+    first.** `#kpi-accuracy-count` is a `<span>` nested *inside* `#kpi-accuracy-sub`, and the
+    function wrote to the span and then overwrote the parent's `innerHTML`, destroying it — so
+    call 1 worked and call 2 hit a null element. Latent since before Day 2 (running the pipeline
+    twice from the UI would have tripped it); only surfaced because Day 2 added a second re-run
+    path. The redundant write is gone and the remaining ones are guarded.
 
 - [x] **S2.3 — Drill-down to evidence (endpoint already exists)** ⏱ ~1h *(was 2h — Day 1 did part of it)*
   - `/api/entity/{id}/trace` (now **`backend/main.py:756`**) returns identifiers + real
