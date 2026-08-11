@@ -1504,10 +1504,17 @@ async function fetchVerificationSummary() {
     const precisionPct = Math.round((data.precision || 0) * 100);
     const typologyCount = (data.typology_breakdown || []).length;
 
-    document.getElementById('kpi-accuracy-recall').textContent = `${recallPct}%`;
-    document.getElementById('kpi-accuracy-precision').textContent = `${precisionPct}%`;
-    document.getElementById('kpi-accuracy-count').textContent = typologyCount;
+    const setText = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value;
+    };
+    setText('kpi-accuracy-recall', `${recallPct}%`);
+    setText('kpi-accuracy-precision', `${precisionPct}%`);
 
+    // #kpi-accuracy-count is a <span> nested INSIDE #kpi-accuracy-sub, whose
+    // innerHTML is rewritten immediately below — writing to it first destroyed it,
+    // so the first call worked and every later one threw on a null element. The
+    // count is already rendered by that innerHTML, so there is nothing to set here.
     const missed = (data.typology_breakdown || []).filter(t => t.missed > 0).map(t => t.label);
     const subEl = document.getElementById('kpi-accuracy-sub');
     if (subEl) {
