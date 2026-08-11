@@ -271,7 +271,12 @@ def run_pipeline(data_dir=None, window_minutes=10, generate_reports=False, progr
     print("\n" + "=" * 60)
     print("PIPELINE COMPLETE")
     if quality["errors"]:
-        print(f"  ⚠ Errors: {len(quality['errors'])}")
+        # Plain ASCII marker on purpose. A "⚠" here crashed the whole request on
+        # Windows, whose console defaults to cp1252 and cannot encode U+26A0:
+        # printing the error summary raised UnicodeEncodeError, so the pipeline
+        # returned HTTP 500 and the actual error this line was trying to report
+        # never reached the operator.
+        print(f"  [!] Errors: {len(quality['errors'])}")
         for err in quality["errors"]:
             print(f"    - {err}")
     print("=" * 60)

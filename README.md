@@ -164,13 +164,67 @@ cp .env.example .env
 **Settings → AI Investigation Copilot** in the dashboard, where it is held in the server process's
 memory for that session only and never written to disk.
 
-### 4. Launch Application
+### 4. (Optional) Enable durable artefact storage
+Required **only if you host this somewhere**. Skip it for local workstation use — reports are
+written to `backend/reports/` and evidence to `backend/data/uploaded/` exactly as before.
+
+On Heroku, Railway, Render, Fly, Lambda or any container without a mounted volume, the filesystem
+is **ephemeral**: every generated `.docx` is destroyed on the next restart or redeploy. An
+investigator who returns an hour later finds the report gone. Setting these two variables archives
+reports, STRs and ingested evidence to private Supabase buckets instead:
+
+```bash
+# in .env
+SUPABASE_URL=https://<your-project>.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_…
+```
+
+Then run `backend/storage/supabase_schema.sql` in the Supabase SQL editor. That step is optional —
+it adds a queryable audit index (`case_artifacts`); storage works without it, and the code detects
+its absence and carries on.
+
+`SUPABASE_SECRET_KEY` is the service-role key and bypasses Row Level Security, so it is read
+server-side only and never reaches the browser. Both buckets are created private; downloads are
+served through 10-minute signed URLs minted by the backend.
+
+### 5. Launch Application
 ```bash
 python backend/main.py
 ```
 
 Open your browser and navigate to:
 👉 **`http://127.0.0.1:8000`**
+
+---
+
+## 🗄️ Durable Artefact Storage
+
+Optional, and off unless configured. Local disk stays the working copy; Supabase becomes the
+archive of record.
+
+| Behaviour | Without storage configured | With storage configured |
+|---|---|---|
+| Report download | Streamed from local disk | **307 redirect** to a 10-minute signed URL |
+| Ingested evidence | Saved to `data/uploaded/` | Also mirrored to `case-evidence` |
+| Server restart on ephemeral host | Reports lost | Reports survive |
+| Supabase outage | — | Falls back to disk, logs a warning |
+
+Artefacts are namespaced by a `case_id` minted per investigation (`CASE_<timestamp>`), rotated
+whenever the dataset is reset or the mode is switched. **Resetting the dataset does not delete what
+was archived** — an investigator clearing their workspace must not silently destroy deliverables
+from a case that may already be before a court; the id rotates and the previous case stays intact.
+
+Every stored object carries a SHA-256 computed by `hashlib` over the exact bytes uploaded. On the
+evidence path that digest is compared against the one measured while streaming the file to disk, and
+a mismatch is reported rather than stored quietly.
+
+No new dependency: this uses the `requests` already present for the copilot.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/storage/status` | Whether archiving is on, which project, key fingerprint. Reports the *absence* of storage explicitly. |
+| `GET /api/storage/case-artifacts` | Everything archived for a case. Lists from the buckets, so it works without the audit table. |
+| `GET /api/storage/artifact-url` | Signed download link for one object. Restricted to this app's two buckets. |
 
 ---
 

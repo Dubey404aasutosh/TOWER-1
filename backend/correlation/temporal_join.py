@@ -71,10 +71,11 @@ def temporal_join(all_events, window_minutes=10):
                 tolerance=tolerance,
             )
         else:
-            txns_e['call_counterparty'] = None
-            txns_e['call_location'] = None
-            txns_e['call_imei'] = None
-            txns_e['call_row_ref'] = None
+            # Declared dtypes, not bare None — see the note on the concat below.
+            txns_e['call_counterparty'] = pd.Series(None, index=txns_e.index, dtype='object')
+            txns_e['call_location'] = pd.Series(None, index=txns_e.index, dtype='object')
+            txns_e['call_imei'] = pd.Series(None, index=txns_e.index, dtype='object')
+            txns_e['call_row_ref'] = pd.Series(float('nan'), index=txns_e.index, dtype='float64')
 
         # Join with nearest IP session
         if not sessions_e.empty:
@@ -91,13 +92,29 @@ def temporal_join(all_events, window_minutes=10):
                 tolerance=tolerance,
             )
         else:
-            txns_e['session_dest_ip'] = None
-            txns_e['session_location'] = None
-            txns_e['session_row_ref'] = None
+            txns_e['session_dest_ip'] = pd.Series(None, index=txns_e.index, dtype='object')
+            txns_e['session_location'] = pd.Series(None, index=txns_e.index, dtype='object')
+            txns_e['session_row_ref'] = pd.Series(float('nan'), index=txns_e.index, dtype='float64')
 
         enriched_parts.append(txns_e)
 
     if enriched_parts:
+        # The two `else` branches above declare their placeholder dtypes rather
+        # than assigning bare None, which would build all-NA *object* columns.
+        #
+        # pandas currently drops all-NA entries when resolving concat dtypes, so
+        # the result took its type from the merge_asof branches — float64 for the
+        # row-reference columns, which merge_asof promotes from int64 the moment
+        # any row goes unmatched. A FutureWarning announces that a coming release
+        # will stop excluding them, at which point one entity with no calls would
+        # have turned every call_row_ref in the run into an object column.
+        #
+        # That dtype is load-bearing, not incidental: these references are quoted
+        # in Sec 65B exhibits, and `_row_ref_text` exists specifically to render a
+        # promoted 1018.0 as "1018". Declaring the placeholder types to match what
+        # merge_asof yields makes this concat produce identical output under both
+        # the current and the future rule — verified by comparing the full
+        # enriched frame and every rule firing before and after the change.
         enriched = pd.concat(enriched_parts, ignore_index=True)
     else:
         enriched = transactions

@@ -2342,7 +2342,7 @@ input,select{font-family:var(--font-ui);}
 .btn-xs { padding:4px 9px; font-size:11px; border-radius:var(--r-sm); }
 
 /* ── CARDS ───────────────────────────────────────────── */
-.card { background:var(--dark-2); border:1px solid var(--border-dark); border-radius:var(--r-lg); overflow:hidden; margin-bottom:16px; }
+.card { background:#F2C7C7; border:1px solid var(--border-dark); border-radius:var(--r-lg); overflow:hidden; margin-bottom:16px; }
 .card-header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border-dark); gap:12px; flex-wrap:wrap; }
 .card-title { font-size:14px; font-weight:700; color:var(--txt-white); }
 
@@ -2351,7 +2351,7 @@ input,select{font-family:var(--font-ui);}
 .kpi-value-row { display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; }
 .kpi-value-row .kpi-value { font-size:26px; }
 .kpi-accuracy-sep { font-size:11px; color:var(--txt-muted); font-weight:600; }
-.kpi-card { background:var(--dark-2); border:1px solid var(--border-dark); border-radius:var(--r-lg); padding:20px; transition:border-color var(--dur-fast),transform var(--dur-fast); }
+.kpi-card { background:#F2C7C7; border:1px solid var(--border-dark); border-radius:var(--r-lg); padding:20px; transition:border-color var(--dur-fast),transform var(--dur-fast); }
 .kpi-card:hover { border-color:var(--border-dark2); transform:translateY(-2px); }
 
 .kpi-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
@@ -2417,8 +2417,8 @@ input,select{font-family:var(--font-ui);}
 
 /* ── RULE GRID ───────────────────────────────────────── */
 .rule-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; padding:16px 20px; }
-.rule-card { background:var(--dark); border:1px solid var(--border-dark); border-radius:var(--r-md); padding:13px 15px; display:flex; align-items:center; gap:12px; }
-.rule-card.fired { border-color:rgba(255,176,32,0.3); background:rgba(255,176,32,0.04); }
+.rule-card { background:#F2C7C7; border:1px solid var(--border-dark); border-radius:var(--r-md); padding:13px 15px; display:flex; align-items:center; gap:12px; }
+.rule-card.fired { border-color:rgba(41,35,35,0.08); background:#F2C7C7; }
 .rule-card-id   { font-family:var(--font-mono); font-size:11.5px; font-weight:700; color:var(--yellow); flex-shrink:0; min-width:40px; }
 .rule-card-name { font-size:12.5px; color:var(--txt-dim); flex:1; }
 .rule-dot       { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
@@ -2442,7 +2442,7 @@ input,select{font-family:var(--font-ui);}
 
 /* ── POI ─────────────────────────────────────────────── */
 .poi-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:14px; }
-.poi-card { background:var(--dark-2); border:1px solid var(--border-dark); border-radius:var(--r-lg); padding:20px; cursor:pointer; transition:border-color var(--dur-fast),transform var(--dur-fast); }
+.poi-card { background:#F2C7C7; border:1px solid var(--border-dark); border-radius:var(--r-lg); padding:20px; cursor:pointer; transition:border-color var(--dur-fast),transform var(--dur-fast); }
 .poi-card:hover { border-color:var(--border-dark2); transform:translateY(-2px); }
 .poi-card.critical { border-color:rgba(255,77,77,0.2); }
 .poi-header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:14px; gap:10px; }
@@ -2563,7 +2563,7 @@ input,select{font-family:var(--font-ui);}
 
 /* ── REPORTS ─────────────────────────────────────────── */
 .reports-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:14px; }
-.report-card  { background:var(--dark-2); border:1px solid var(--border-dark); border-radius:var(--r-lg); padding:20px; display:flex; flex-direction:column; gap:12px; }
+.report-card  { background:#F2C7C7; border:1px solid var(--border-dark); border-radius:var(--r-lg); padding:20px; display:flex; flex-direction:column; gap:12px; }
 .report-icon  { font-size:24px; color:var(--orange); }
 .report-title { font-size:14px; font-weight:600; color:var(--txt-white); }
 .report-meta  { font-size:12px; color:var(--txt-muted); }
@@ -3091,6 +3091,7 @@ body, .app-shell, .main-content {
   padding: 22px !important;
   box-shadow: 0 2px 10px rgba(41,35,35,0.04) !important;
   transition: transform 180ms ease-out, box-shadow 180ms ease-out !important;
+  background: #F2C7C7 !important;
 }
 
 .kpi-card:hover {
@@ -3098,11 +3099,11 @@ body, .app-shell, .main-content {
   box-shadow: 0 4px 16px rgba(41,35,35,0.08) !important;
 }
 
-.kpi-card:nth-child(1) { background: var(--ref-pastel-pink) !important; }
-.kpi-card:nth-child(2) { background: var(--ref-pastel-peach) !important; }
-.kpi-card:nth-child(3) { background: var(--ref-pastel-lavender) !important; }
-.kpi-card:nth-child(4) { background: var(--ref-pastel-mint) !important; }
-.kpi-card:nth-child(5) { background: var(--ref-pastel-peach) !important; }
+.kpi-card:nth-child(1),
+.kpi-card:nth-child(2),
+.kpi-card:nth-child(3),
+.kpi-card:nth-child(4),
+.kpi-card:nth-child(5) { background: #F2C7C7 !important; }
 
 .kpi-value-row { display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; }
 .kpi-value-row .kpi-value { font-size:24px !important; margin-top:0 !important; }
@@ -3152,7 +3153,7 @@ body, .app-shell, .main-content {
 
 /* Dashboard Cards (Table & Feeds) */
 .card {
-  background: var(--ref-surface-card) !important;
+  background: #F2C7C7 !important;
   border-radius: 20px !important;
   border: 1px solid rgba(41,35,35,0.05) !important;
   box-shadow: 0 2px 10px rgba(41,35,35,0.04) !important;
@@ -3172,7 +3173,7 @@ body, .app-shell, .main-content {
 
 /* Right Panel (Pipeline Activity) */
 .dash-grid > .card:nth-child(2) {
-  background: var(--ref-bg-panel) !important;
+  background: #F2C7C7 !important;
 }
 
 .dash-grid > .card:nth-child(2) .card-title {
@@ -3257,7 +3258,7 @@ body, .app-shell, .main-content {
 
 .rule-card {
   border-radius: 999px !important;
-  background: var(--ref-surface-pill) !important;
+  background: #F2C7C7 !important;
   border: 1px solid rgba(41,35,35,0.05) !important;
   padding: 8px 16px !important;
   transition: all 150ms ease-out !important;
@@ -3273,8 +3274,8 @@ body, .app-shell, .main-content {
 }
 
 .rule-card.fired {
-  background: var(--ref-dark-accent) !important;
-  border-color: var(--ref-dark-accent) !important;
+  background: #F2C7C7 !important;
+  border-color: rgba(41,35,35,0.08) !important;
 }
 
 .rule-card.fired .rule-card-name,

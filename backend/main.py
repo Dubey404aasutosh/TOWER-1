@@ -5,6 +5,7 @@ import json
 import math
 import hashlib
 import logging
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import List
@@ -14,7 +15,7 @@ import networkx as nx
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 
 # Setup logging
@@ -29,13 +30,61 @@ sys.path.insert(0, str(BACKEND_DIR))
 from pipeline import run_pipeline, sha256_file
 from graph.map_builder import CELL_TOWERS
 
+# Durable artefact storage. Optional: with no Supabase credentials configured
+# every endpoint below falls back to the local-disk behaviour it has always had.
+from storage import (
+    STORE,
+    StorageError,
+    BUCKET_REPORTS,
+    BUCKET_EVIDENCE,
+    new_case_id,
+    # Aliased: the download endpoints below bind a local `report_path` for the
+    # generated file on disk, which would shadow this and raise UnboundLocalError.
+    # These build object KEYS, not filesystem paths, so the alias reads better too.
+    report_path as report_object_key,
+    evidence_path as evidence_object_key,
+)
+
 # Investigation Copilot — the LLM layer. Imported at module load so a missing
 # dependency fails loudly at startup rather than on the first question asked.
 from copilot import CopilotService, GeminiClient, GeminiError, GeminiNotConfigured
 from copilot import context as copilot_context
 from copilot.service import suggested_questions
 
-app = FastAPI(title="E-Rakshak API", version="2.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start with nothing loaded.
+
+    This used to run the demo dataset through the pipeline at boot so the
+    dashboard had something to show. That means every screen — KPIs, persons of
+    interest, evidence vault, graphs, reports — is populated with Surat demo
+    output before the operator has supplied a single file, and it is not
+    obvious on screen which of it came from them. The dashboard now starts
+    empty and stays empty until a pipeline run is explicitly requested, so
+    everything on it belongs to the dataset actually under investigation.
+
+    Expressed as a lifespan handler rather than the @app.on_event("startup")
+    decorator this used to use: on_event is deprecated and slated for removal,
+    and it emitted a DeprecationWarning on every boot and every test run.
+    """
+    logger.info(
+        "E-Rakshak API ready. No dataset loaded — upload files and run the "
+        "pipeline, or switch to demo mode in Settings."
+    )
+    if STORE.configured:
+        logger.info(
+            f"Durable storage active: {STORE.url} "
+            f"(buckets {BUCKET_REPORTS}, {BUCKET_EVIDENCE}; key {STORE.key_fingerprint()})"
+        )
+    else:
+        logger.info(
+            "Durable storage not configured — reports and evidence stay on local "
+            "disk only. Set SUPABASE_URL and SUPABASE_SECRET_KEY before hosting."
+        )
+    yield
+
+
+app = FastAPI(title="E-Rakshak API", version="2.0.0", lifespan=lifespan)
 
 # CORS setup for frontend communication
 app.add_middleware(
@@ -50,7 +99,11 @@ app.add_middleware(
 STATE = {
     "data_mode": "demo", # "demo" or "upload"
     "pipeline_run": False,
-    "last_results": None
+    "last_results": None,
+    # Namespaces every artefact this server stores, so a second investigation
+    # cannot overwrite the first one's deliverables. Rotated whenever the dataset
+    # is reset or the mode is switched — both mean "this is a different case now".
+    "case_id": new_case_id(),
 }
 
 RAW_DIR = BACKEND_DIR / "data" / "raw"
@@ -75,6 +128,47 @@ def clear_old_reports():
         for f in REPORTS_DIR.iterdir():
             if f.is_file() and f.suffix == ".docx" and not f.name.startswith(SAMPLE_REPORT_PREFIX):
                 f.unlink()
+
+
+DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+def serve_report_file(disk_path, entity_id, kind, download_name):
+    """
+    Hand back a generated deliverable, preferring durable storage over local disk.
+
+    Why a redirect rather than a JSON {"url": ...}: the dashboard links to these
+    endpoints from five plain `<a href>`/`window.open` call sites, which expect a
+    file to come back. A 307 keeps every one of those working untouched — the
+    browser simply follows it and pulls the .docx straight from Supabase.
+
+    Falls back to streaming from disk whenever storage is unconfigured OR fails.
+    A Supabase outage must not stand between an investigator and their report;
+    the local copy still exists for the life of this process either way.
+    """
+    disk_response = FileResponse(disk_path, filename=download_name, media_type=DOCX_MIME)
+
+    if not STORE.configured:
+        return disk_response
+
+    try:
+        payload = Path(disk_path).read_bytes()
+        key = report_object_key(STATE["case_id"], entity_id, kind)
+        stored = STORE.upload(BUCKET_REPORTS, key, payload, DOCX_MIME)
+        STORE.record_artifact(
+            STATE["case_id"], f"{kind}_report", download_name, stored, entity_id=entity_id
+        )
+        logger.info(
+            f"Stored {kind} report for {entity_id} at {BUCKET_REPORTS}/{key} "
+            f"({stored['size_bytes']} bytes, sha256={stored['sha256'][:16]}…)"
+        )
+        return RedirectResponse(
+            STORE.signed_url(BUCKET_REPORTS, key, download_name=download_name),
+            status_code=307,
+        )
+    except (StorageError, OSError) as e:
+        logger.warning(f"Durable storage unavailable for {entity_id}, serving from disk: {e}")
+        return disk_response
 
 
 # ---- Network serialisation ---------------------------------------------------
@@ -445,7 +539,9 @@ def get_status():
         "uploaded_files": files,
         "files_count": len(files),
         "entity_count": entity_count,
-        "event_count": event_count
+        "event_count": event_count,
+        "case_id": STATE["case_id"],
+        "durable_storage": STORE.configured,
     }
 
 
@@ -457,9 +553,10 @@ def toggle_mode(payload: dict):
     STATE["data_mode"] = mode
     STATE["pipeline_run"] = False
     STATE["last_results"] = None
+    STATE["case_id"] = new_case_id()
     clear_old_reports()
-    logger.info(f"Data mode changed to: {mode}")
-    return {"status": "success", "mode": mode}
+    logger.info(f"Data mode changed to: {mode} (case {STATE['case_id']})")
+    return {"status": "success", "mode": mode, "case_id": STATE["case_id"]}
 
 
 @app.post("/api/upload")
@@ -491,11 +588,55 @@ async def upload_files(files: List[UploadFile] = File(...)):
                     size_bytes += len(chunk)
                     f.write(chunk)
 
-            saved_files.append({
+            record = {
                 "filename": clean_name,
                 "size_bytes": size_bytes,
-                "sha256": digest.hexdigest()
-            })
+                "sha256": digest.hexdigest(),
+                "stored": False,
+            }
+
+            # Mirror the received evidence into durable storage. The local copy
+            # stays authoritative for this run — the pipeline reads from disk —
+            # but on an ephemeral host that copy dies with the container, taking
+            # the source evidence for an already-issued report with it.
+            #
+            # Never fatal: a storage failure must not reject a file the operator
+            # successfully uploaded, so it is logged and reported as stored=false
+            # rather than raised.
+            if STORE.configured:
+                try:
+                    # Streamed from disk rather than read into memory: this file
+                    # was written chunk-by-chunk above precisely so a large
+                    # upload never has to be resident, and read_bytes() here
+                    # would put all of it (up to the bucket's 50 MB limit) back
+                    # on the heap for every concurrent upload.
+                    stored = STORE.upload_file(
+                        BUCKET_EVIDENCE,
+                        evidence_object_key(STATE["case_id"], clean_name),
+                        target_path,
+                        file.content_type or "application/octet-stream",
+                    )
+                    STORE.record_artifact(
+                        STATE["case_id"], "evidence", clean_name, stored
+                    )
+                    record["stored"] = True
+                    record["storage_path"] = stored["path"]
+                    # The digest computed while streaming to disk and the one
+                    # computed over the bytes sent to Supabase are independent
+                    # measurements of the same file. If they disagree, the file
+                    # changed between the two reads and the operator must know.
+                    if stored["sha256"] != record["sha256"]:
+                        record["stored"] = False
+                        record["storage_error"] = "digest mismatch between disk and stored copy"
+                        logger.error(
+                            f"Digest mismatch for {clean_name}: disk={record['sha256']} "
+                            f"stored={stored['sha256']}"
+                        )
+                except (StorageError, OSError) as e:
+                    record["storage_error"] = str(e)
+                    logger.warning(f"Evidence not mirrored to storage ({clean_name}): {e}")
+
+            saved_files.append(record)
             logger.info(f"File uploaded: {clean_name} ({size_bytes} bytes) sha256={digest.hexdigest()}")
         except Exception as e:
             logger.error(f"Error saving file {clean_name}: {str(e)}")
@@ -506,7 +647,9 @@ async def upload_files(files: List[UploadFile] = File(...)):
         "uploaded": saved_files,
         "filenames": [f["filename"] for f in saved_files],
         "hash_algorithm": "SHA-256",
-        "mode": "upload"
+        "mode": "upload",
+        "case_id": STATE["case_id"],
+        "durable_storage": STORE.configured,
     }
 
 
@@ -583,6 +726,101 @@ def get_evidence_files():
 
 
 
+@app.get("/api/storage/status")
+def storage_status():
+    """
+    Whether case artefacts are being archived durably, and where.
+
+    Deliberately reports the *absence* of storage as a first-class state rather
+    than staying quiet about it: on an ephemeral host, "not configured" means
+    every report generated this session dies with the container, and an operator
+    should be able to see that before they rely on it.
+
+    Never returns the key — only a fingerprint, so a deployment can confirm which
+    credentials loaded without exposing them.
+    """
+    return {
+        "configured": STORE.configured,
+        "provider": "Supabase Storage",
+        "project_url": STORE.url,
+        "key_fingerprint": STORE.key_fingerprint(),
+        "buckets": {"reports": BUCKET_REPORTS, "evidence": BUCKET_EVIDENCE},
+        "case_id": STATE["case_id"],
+        "signed_url_ttl_seconds": 600,
+        "note": (
+            "Artefacts archive to Supabase; local disk is a working copy only."
+            if STORE.configured else
+            "Not configured — reports and evidence live on local disk only and "
+            "will be lost if this server restarts on an ephemeral filesystem."
+        ),
+    }
+
+
+@app.get("/api/storage/case-artifacts")
+def storage_case_artifacts(case_id: str = None):
+    """
+    Everything archived for a case — the durable counterpart to the Evidence Vault.
+
+    Lists straight from the storage buckets rather than from the audit table, so
+    it answers correctly even on a deployment that never ran supabase_schema.sql.
+    """
+    if not STORE.configured:
+        raise HTTPException(
+            status_code=503,
+            detail="Durable storage is not configured. Set SUPABASE_URL and "
+                   "SUPABASE_SECRET_KEY to enable the case archive."
+        )
+
+    target_case = case_id or STATE["case_id"]
+    try:
+        artifacts = []
+        for bucket, prefixes in (
+            (BUCKET_REPORTS, (f"{target_case}/forensic", f"{target_case}/str")),
+            (BUCKET_EVIDENCE, (target_case,)),
+        ):
+            for prefix in prefixes:
+                for obj in STORE.list_prefix(bucket, prefix):
+                    if not obj.get("name"):
+                        continue
+                    artifacts.append({
+                        "bucket": bucket,
+                        "path": f"{prefix}/{obj['name']}",
+                        "filename": obj["name"],
+                        "size_bytes": (obj.get("metadata") or {}).get("size"),
+                        "content_type": (obj.get("metadata") or {}).get("mimetype"),
+                        "created_at": obj.get("created_at"),
+                    })
+    except StorageError as e:
+        raise HTTPException(status_code=e.status, detail=e.message)
+
+    return {
+        "case_id": target_case,
+        "artifacts": artifacts,
+        "artifacts_count": len(artifacts),
+    }
+
+
+@app.get("/api/storage/artifact-url")
+def storage_artifact_url(bucket: str, path: str):
+    """
+    Mint a short-lived download link for one archived object.
+
+    Restricted to this app's own two buckets — the parameter is supplied by a
+    client, and a bucket name taken on trust would turn this into a signing
+    oracle for anything else the service key can reach in the project.
+    """
+    if not STORE.configured:
+        raise HTTPException(status_code=503, detail="Durable storage is not configured.")
+    if bucket not in (BUCKET_REPORTS, BUCKET_EVIDENCE):
+        raise HTTPException(status_code=400, detail=f"Unknown bucket: {bucket}")
+
+    try:
+        url = STORE.signed_url(bucket, path, download_name=Path(path).name)
+    except StorageError as e:
+        raise HTTPException(status_code=e.status, detail=e.message)
+    return {"url": url, "expires_in_seconds": 600}
+
+
 @app.post("/api/reset-dataset")
 @app.post("/api/clear-uploads")
 def reset_dataset():
@@ -608,14 +846,30 @@ def reset_dataset():
     STATE["data_mode"] = "upload"
     STATE["pipeline_run"] = False
     STATE["last_results"] = None
+    # A new case id, NOT a deletion of what the previous case stored.
+    #
+    # This endpoint wipes local working state so the next investigation starts
+    # clean. Anything already archived to Supabase deliberately survives: an
+    # investigator resetting their workspace must not silently destroy evidence
+    # and deliverables from a case that may already be before a court. Rotating
+    # the id sends the new case to a fresh prefix and leaves the old one intact
+    # and queryable.
+    previous_case = STATE["case_id"]
+    STATE["case_id"] = new_case_id()
     gc.collect()
 
-    logger.info("Dataset and case state reset cleanly for new investigation.")
+    logger.info(
+        f"Local state reset for new investigation. Case {previous_case} -> "
+        f"{STATE['case_id']} (archived artefacts retained)."
+    )
     return {
         "status": "success",
         "message": "Dataset, reports, and analysis state reset cleanly. Ready for new case upload.",
         "data_mode": "upload",
-        "pipeline_run": False
+        "pipeline_run": False,
+        "case_id": STATE["case_id"],
+        "previous_case_id": previous_case,
+        "archived_artifacts_retained": STORE.configured,
     }
 
 
@@ -664,24 +918,6 @@ def trigger_pipeline(window_minutes: int = Form(10)):
     except Exception as e:
         logger.error(f"Pipeline failure: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Pipeline error: {str(e)}")
-
-
-@app.on_event("startup")
-def startup_event():
-    """Start with nothing loaded.
-
-    This used to run the demo dataset through the pipeline at boot so the
-    dashboard had something to show. That means every screen — KPIs, persons of
-    interest, evidence vault, graphs, reports — is populated with Surat demo
-    output before the operator has supplied a single file, and it is not
-    obvious on screen which of it came from them. The dashboard now starts
-    empty and stays empty until a pipeline run is explicitly requested, so
-    everything on it belongs to the dataset actually under investigation.
-    """
-    logger.info(
-        "E-Rakshak API ready. No dataset loaded — upload files and run the "
-        "pipeline, or switch to demo mode in Settings."
-    )
 
 
 @app.get("/api/results")
@@ -1106,10 +1342,8 @@ def download_report(entity_id: str):
     matching = list(reports_dir.glob(f"forensic_report_{entity_id}*.docx"))
     if matching:
         latest = max(matching, key=lambda f: f.stat().st_mtime)
-        return FileResponse(
-            latest,
-            filename=f"forensic_report_{entity_id}.docx",
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        return serve_report_file(
+            latest, entity_id, "forensic", f"forensic_report_{entity_id}.docx"
         )
 
     # 2. On-demand report generation if not generated yet
@@ -1144,11 +1378,8 @@ def download_report(entity_id: str):
         timeline_png=timeline_png, network_png=network_png,
     )
 
-
-    return FileResponse(
-        report_path,
-        filename=f"forensic_report_{entity_id}.docx",
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    return serve_report_file(
+        report_path, entity_id, "forensic", f"forensic_report_{entity_id}.docx"
     )
 
 
@@ -1242,10 +1473,8 @@ def download_str_report(entity_id: str):
     report_path = generate_str_report(entity_id, entity_data, risk_data, all_events_df,
                                        timeline_png=timeline_png)
 
-    return FileResponse(
-        report_path,
-        filename=f"str_report_{entity_id}.docx",
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    return serve_report_file(
+        report_path, entity_id, "str", f"str_report_{entity_id}.docx"
     )
 
 

@@ -103,9 +103,20 @@ _SEVERITY_RANK = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
 
 
 def _clean_id_set(values):
-    """Normalise an identifier collection, dropping blanks and null-ish strings."""
+    """
+    Normalise an identifier collection, dropping blanks and null-ish strings.
+
+    Accepts None, a list, or a numpy array — `_detect_device_fanout` passes the
+    result of `.unique()`, which is an ndarray. The guard is an explicit None
+    check rather than `values or []` because truth-testing an ndarray of more
+    than one element raises ValueError, and that exception propagated out of
+    check_idr1 through run_all_rules and killed the ENTIRE rule engine: the
+    pipeline caught it, logged "Rule engine error", and returned every entity
+    with zero rules fired. It triggered on the first entity holding 2+ MSISDNs
+    on one IMEI — precisely the fan-out case IDR-1 exists to catch.
+    """
     out = set()
-    for value in values or []:
+    for value in ([] if values is None else values):
         text = str(value).strip()
         if text and text.lower() not in ("nan", "none", "null", "<na>"):
             out.add(text)
