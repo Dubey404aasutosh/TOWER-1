@@ -109,6 +109,14 @@ def verify_against_ground_truth(scored_entities, entities=None, ground_truth_pat
         typology = gt_entry.get("typology", "?")
         name = gt_entry.get("name", "?")
 
+        # ONE threshold on both sides of the metric.
+        #
+        # This used to count a true positive if the matched entity was flagged
+        # HIGH/CRITICAL *or* had merely fired any rule at any tier — while false
+        # positives below were counted at HIGH/CRITICAL only. Two thresholds on two
+        # sides of the same ratio flatters recall: a guilty entity sitting at MEDIUM
+        # scored as a hit, but a clean entity at MEDIUM was not a miss. "Flagged"
+        # means HIGH or CRITICAL, for the guilty and the innocent alike.
         if detected and detected in flagged_entities:
             detected_tier = scored_entities.get(detected, {}).get("risk_tier", "LOW")
             detected_rules = scored_entities.get(detected, {}).get("rules_fired", [])
@@ -116,17 +124,11 @@ def verify_against_ground_truth(scored_entities, entities=None, ground_truth_pat
             status = "DETECTED"
             detected_entity_ids.add(detected)
         elif detected:
-            # Matched an entity but it wasn't flagged HIGH/CRITICAL
+            # Matched, but the engine did not escalate it — that is a miss.
             detected_tier = scored_entities.get(detected, {}).get("risk_tier", "LOW")
             detected_rules = scored_entities.get(detected, {}).get("rules_fired", [])
-            # Count as detected if any rules fired, even if tier is LOW/MEDIUM
-            if detected_rules:
-                true_positives += 1
-                status = "DETECTED"
-                detected_entity_ids.add(detected)
-            else:
-                false_negatives += 1
-                status = "MISSED"
+            false_negatives += 1
+            status = "MISSED (below HIGH)" if detected_rules else "MISSED"
         else:
             detected_tier = "N/A"
             detected_rules = []
