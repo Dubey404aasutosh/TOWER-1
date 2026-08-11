@@ -27,7 +27,7 @@ def get_changed_files():
     return files
 
 def generate_commit_message(changed_files):
-    """Generate a descriptive commit message based on changed files."""
+    """Generate a clean, specialized commit message based on changed files."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     modified = [f for status, f in changed_files if status in ['M', 'MM']]
@@ -36,13 +36,13 @@ def generate_commit_message(changed_files):
     
     parts = []
     if modified:
-        parts.append(f"modified: {', '.join(modified[:5])}{' (and more)' if len(modified) > 5 else ''}")
+        parts.append(f"update {', '.join(modified[:5])}{' (+more)' if len(modified) > 5 else ''}")
     if added:
-        parts.append(f"added: {', '.join(added[:5])}{' (and more)' if len(added) > 5 else ''}")
+        parts.append(f"add {', '.join(added[:5])}{' (+more)' if len(added) > 5 else ''}")
     if deleted:
-        parts.append(f"deleted: {', '.join(deleted[:5])}{' (and more)' if len(deleted) > 5 else ''}")
+        parts.append(f"remove {', '.join(deleted[:5])}{' (+more)' if len(deleted) > 5 else ''}")
     
-    summary = " | ".join(parts) if parts else "auto-update files"
+    summary = " | ".join(parts) if parts else "update files"
     commit_msg = f"{summary} [{now}]"
     return commit_msg
 
