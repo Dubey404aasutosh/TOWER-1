@@ -432,44 +432,7 @@ function initWorkflowSteps() {
   }, 3200);
 }
 
-/* ── THEME MANAGEMENT ────────────────────────────────────────────── */
-function initTheme() {
-  const saved = localStorage.getItem('erakhsak_theme') || 'dark';
-  setTheme(saved);
-}
-
-function setTheme(theme) {
-  const appShell = document.getElementById('app-shell');
-  if (theme === 'light') {
-    if (appShell) appShell.setAttribute('data-theme', 'light');
-    document.documentElement.setAttribute('data-theme', 'light');
-    const btn = document.getElementById('theme-toggle-btn');
-    if (btn) btn.innerHTML = '<i class="fa-solid fa-moon"></i>';
-    const settingsToggle = document.getElementById('theme-switch-checkbox');
-    if (settingsToggle) settingsToggle.checked = true;
-    const label = document.getElementById('theme-mode-label');
-    if (label) label.textContent = 'Light Mode';
-    localStorage.setItem('erakhsak_theme', 'light');
-  } else {
-    if (appShell) appShell.removeAttribute('data-theme');
-    document.documentElement.removeAttribute('data-theme');
-    const btn = document.getElementById('theme-toggle-btn');
-    if (btn) btn.innerHTML = '<i class="fa-solid fa-sun"></i>';
-    const settingsToggle = document.getElementById('theme-switch-checkbox');
-    if (settingsToggle) settingsToggle.checked = false;
-    const label = document.getElementById('theme-mode-label');
-    if (label) label.textContent = 'Dark Mode';
-    localStorage.setItem('erakhsak_theme', 'dark');
-  }
-}
-
-function toggleTheme() {
-  const current = document.documentElement.getAttribute('data-theme');
-  setTheme(current === 'light' ? 'dark' : 'light');
-}
-
 document.addEventListener('DOMContentLoaded', () => {
-  initTheme();
 
   const isDashboardPage = !!document.getElementById('app-shell');
   const isLandingPage = !!document.getElementById('landing-page');
