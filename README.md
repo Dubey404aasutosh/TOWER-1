@@ -25,6 +25,7 @@ Our clean, modular monolithic architecture ensures maintainability, scalability,
 ```text
 📦 TOWER-1
  ┣ 📂 backend                 # Python/FastAPI Backend Engine
+ ┃ ┣ 📂 copilot               # AI Investigation Copilot (Gemini client, grounding context, prompts)
  ┃ ┣ 📂 correlation           # Temporal fusion & rules engine
  ┃ ┣ 📂 data                  # Raw data parsers, generators & uploads
  ┃ ┣ 📂 graph                 # NetworkX Entity Resolution graph builders
@@ -61,7 +62,8 @@ Our clean, modular monolithic architecture ensures maintainability, scalability,
 | 🤖 **IsolationForest ML** | Secondary machine learning anomaly detection (`Scikit-learn`) running alongside rule-gated risk scoring. |
 | 📄 **Sec 65B BSA Admissibility** | Every ingested file is digested with `hashlib` SHA-256 at ingest and re-verified on request, and forensic + FIU-IND STR packages are generated as Word `.docx` with legal certification footers. No PDF export — the `.docx` is the deliverable. |
 | 🗺️ **Interactive Visualizations** | Money-flow and identity network graphs (`Vis.js`) with amount/time/location/rule filters, a unified per-entity evidentiary timeline (SVG, focus+context zoom), and a cell tower geo-location map (`Leaflet.js`) plotted from the same tower master the LOC-1 rule geolocates against. |
-| 🎨 **CrimeOS Dashboard** | Modern investigation command center with high-contrast **Dark Mode** and **Light Mode**, `Cmd+K` command palette, and AI Copilot. |
+| 🤖 **AI Investigation Copilot** | Google **Gemini**-backed case summary and free-text Q&A, grounded strictly on the loaded run — the digest it reads is built from the pipeline's own output and is served verbatim at `/api/copilot/context`, so any answer can be checked against its inputs. Optional: the platform runs fully without a key. |
+| 🎨 **CrimeOS Dashboard** | Modern investigation command center with high-contrast **Dark Mode** and **Light Mode**, `Cmd+K` command palette, and the AI Copilot panel. |
 
 ---
 
@@ -145,7 +147,24 @@ cd TOWER-1
 pip install -r requirements.txt
 ```
 
-### 3. Launch Application
+### 3. (Optional) Enable the AI Investigation Copilot
+The copilot runs on **Google Gemini**. Everything else — ingestion, entity resolution, the seven
+rules, scoring, the graphs, the forensic report and the STR — works without it; leave this out and
+the copilot panel simply reports that it is not connected.
+
+1. Get a **free** API key at **[aistudio.google.com/apikey](https://aistudio.google.com/apikey)**.
+2. Copy `.env.example` to `.env` and set the key:
+
+```bash
+cp .env.example .env
+# then edit .env:  GEMINI_API_KEY=AIza…
+```
+
+`.env` is gitignored. If you would rather not create one, the key can also be pasted into
+**Settings → AI Investigation Copilot** in the dashboard, where it is held in the server process's
+memory for that session only and never written to disk.
+
+### 4. Launch Application
 ```bash
 python backend/main.py
 ```
@@ -155,11 +174,56 @@ Open your browser and navigate to:
 
 ---
 
+## 🤖 AI Investigation Copilot
+
+A Gemini-backed assistant that answers **from the loaded run and nothing else**. Two features:
+
+| Feature | What it does |
+|---|---|
+| **Case summary** | A written brief for the current run — bottom line, priority entities, typologies detected, money movement and layering chains, provenance, next steps and caveats. Also runs per entity (graph inspector → *Ask Copilot about this entity*). |
+| **Q&A chat** | Free-text questions over the run. Entity ids, KYC names, phone numbers and account numbers mentioned in a question automatically attach that entity's full dossier — rule explanations, cited evidence row references and the underlying event rows. |
+
+**How the grounding works.** `backend/copilot/context.py` compiles the in-memory pipeline result
+into a compact factual digest: source files and their SHA-256 digests, event and entity totals, which
+rules fired and on whom, the engine's own explanation for every firing, the detected layering chains
+hop by hop, the money-flow totals, and the ground-truth recall/precision for the run. That digest —
+plus a dossier for any entity the question names — is the model's entire universe of facts. It has
+no tools, no retrieval, and no memory between conversations.
+
+**Why that matters.** The system prompt forbids asserting any entity id, name, amount, timestamp or
+count that is not in the digest, forbids re-scoring a risk tier (the gating logic is stated to it and
+belongs to the rule engine), keeps the ML anomaly flag reported as the separate unsupervised signal
+it is, and requires the rule id and evidence row reference behind every claim. Answers are labelled
+as AI-generated in the UI.
+
+**Auditing an answer.** `GET /api/copilot/context` returns the exact digest the model was given, so a
+disputed answer can be checked against its inputs directly.
+
+> ⚠️ The copilot is a briefing aid, not a deliverable. The Sec 65B forensic report and the FIU-IND
+> STR that go into a case file are still written by `backend/report/forensic_report.py` straight from
+> the pipeline output — no generated text reaches them.
+
+### Copilot endpoints
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/copilot/status` | Whether a key is configured, which model, and starter questions derived from the rules that actually fired. `?verify=true` spends one tiny call to prove the key works. |
+| `POST /api/copilot/configure` | Accept a key for this process (memory only, verified before it is stored). |
+| `POST /api/copilot/summary` | Case summary, or an entity brief with `{"entity_id": "ENT_0043"}`. Streams over SSE. |
+| `POST /api/copilot/chat` | Q&A turn: `{"question": …, "history": [...], "entity_id": …}`. Streams over SSE. |
+| `GET /api/copilot/context` | The grounding digest, verbatim — the audit surface for the feature. |
+
+All of them return **409** until a pipeline run exists. A copilot that will discuss a case with no
+dataset loaded is generating fiction.
+
+---
+
 ## 💻 Tech Stack
 
 - **Backend**: Python 3.10+, FastAPI, Uvicorn
 - **Data Engineering & Graph**: Pandas, NetworkX, OpenPyXL, pdfplumber
 - **Machine Learning**: Scikit-Learn (IsolationForest)
+- **AI Copilot**: Google Gemini (`generativelanguage` REST API, SSE streaming) — optional, grounded on the loaded run
 - **Frontend**: Vanilla HTML5, CSS3 (CSS Variables for Dark/Light Mode), JavaScript ES6+
 - **Visualizations**: Vis.js Network (money-flow + identity graphs), hand-rolled SVG (unified timeline), Leaflet.js (cell tower geo map), Matplotlib (charts embedded in the .docx reports)
 - **Reporting**: python-docx (Word `.docx` Sec 65B forensic report + FIU-IND STR), with timeline and money-flow charts embedded as images

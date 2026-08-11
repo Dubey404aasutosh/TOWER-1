@@ -13,3 +13,6 @@ chardet>=5.2.0
 fastapi>=0.100.0
 uvicorn>=0.22.0
 python-multipart>=0.0.6
+# Investigation Copilot — the only outbound HTTP the app makes (Google Gemini).
+# The .env parser is hand-rolled in backend/copilot/gemini.py, so no dotenv dep.
+requests>=2.31.0

@@ -485,6 +485,9 @@ document.addEventListener('DOMContentLoaded', () => {
     populateRuleGrid();
     populatePalette();
     fetchAPIStatus();
+    // Establishes whether a Gemini key is present so the Settings card and the
+    // copilot panel show their real state before either is opened.
+    refreshCopilotStatus();
     initKBShortcuts();
 
     const initialHash = window.location.hash.replace('#', '').trim();
@@ -586,50 +589,16 @@ const RULE_CATALOG = [
   { id: 'LOC-1', name: 'Location Mismatch' },
 ];
 
-/* The copilot answers from the loaded run only.
+/* The copilot's answers used to be built here, in the browser, by picking at
+   random from five pre-written paragraphs that named entities ("ENT-0037"),
+   people ("Yashica Issac"), amounts ("₹2.4L") and counts ("13 firings across 10
+   entities") from the Surat demo set. Those answers came back whatever you asked
+   and whatever dataset was loaded, which on a real case would put invented
+   findings in an investigator's hands.
 
-   It used to pick at random from five pre-written paragraphs that named
-   entities ("ENT-0037"), people ("Yashica Issac"), amounts ("₹2.4L") and
-   counts ("13 firings across 10 entities") from the Surat demo set. Those
-   answers were returned whatever you asked and whatever dataset was loaded,
-   which on a real case would put invented findings in an investigator's hands.
-
-   Natural-language querying is a bonus criterion and is not implemented, so
-   this now reports what the current run actually contains and says plainly
-   that it cannot parse the question. */
-function buildCopilotReply(question) {
-  const data = appState.results;
-  if (!data || !data.metrics) {
-    return "No dataset is loaded. Upload bank, CDR or IPDR files and run the pipeline — " +
-           "then I can report what the rule engine found in them.";
-  }
-
-  const m = data.metrics;
-  const firings = data.rule_firings || {};
-  const flagged = (data.suspects || []).filter(s => s.risk_tier !== 'LOW');
-
-  const firedList = Object.entries(firings)
-    .sort((a, b) => b[1] - a[1])
-    .map(([rule, count]) => `${rule} ×${count}`)
-    .join(', ');
-
-  const topLines = flagged.slice(0, 5).map(s =>
-    `• ${s.entity_id}${s.name && s.name !== 'Unknown' ? ` (${s.name})` : ''} — ` +
-    `${s.risk_tier}, fired ${(s.rules_fired || []).join(' + ') || 'no rule'}`
-  ).join('<br>');
-
-  return [
-    "I can't parse free-text questions yet — natural-language querying is not implemented.",
-    "Here is what the current run holds:",
-    `<br><strong>${Number(m.total_events || 0).toLocaleString()} events</strong> resolved into ` +
-      `<strong>${Number(m.total_entities || 0).toLocaleString()} entities</strong>; ` +
-      `<strong>${Number(m.flagged_suspects || 0).toLocaleString()}</strong> flagged, ` +
-      `<strong>${Number(m.ml_anomalies || 0).toLocaleString()}</strong> ML anomaly flags.`,
-    firedList ? `Rules fired: ${firedList}.` : "No rule fired on this dataset.",
-    topLines ? `<br>${topLines}` : "",
-    "<br>Open Persons of Interest or the Evidence Vault for the full picture.",
-  ].filter(Boolean).join(' ');
-}
+   Answers now come from Google Gemini via /api/copilot/*, grounded on a digest
+   the backend builds from the loaded run and nothing else. See the AI COPILOT
+   section further down for the client, and backend/copilot/ for the grounding. */
 
 /* ── INIT (called inside enterDashboard) ────────────────────────── */
 function initDashboardOnce() {
@@ -1351,7 +1320,41 @@ function closeSlideOver() {
   appState.slideOverOpen = false;
 }
 
-/* ── AI COPILOT ─────────────────────────────────────────────────── */
+/* ── AI COPILOT ──────────────────────────────────────────────────────────
+   Client for /api/copilot/*. Two features, one transport:
+
+     openCopilotSummary()  → POST /api/copilot/summary — a written brief for the
+                             loaded run, or for one entity when an id is passed.
+     sendCopilotMessage()  → POST /api/copilot/chat — Q&A, with the conversation
+                             so far sent back each turn (the server keeps no
+                             session state).
+
+   Both stream over SSE so text appears while it is being written rather than
+   after a 400-word brief is finished. Everything the model sees is assembled
+   server-side from the loaded run; this file sends a question, not a context, so
+   there is no way for the browser to widen what the copilot can talk about.
+
+   The panel is honest about its three failure states rather than rendering an
+   empty bubble: no API key (setup form), no pipeline run (409 → prompt to run
+   one), and a request that failed (the error, verbatim, in a red bubble). */
+
+const copilotState = {
+  configured: false,
+  model: '',
+  keySource: null,
+  pipelineRun: false,
+  suggestions: [],
+  history: [],      // [{role:'user'|'model', text}] — replayed to the API each turn
+  busy: false,
+  statusChecked: false,
+  /* The entity the operator currently has open, sent as `entity_id` so "why did
+     this one fire?" resolves without them retyping the id. Set by the graph
+     inspector and the timeline view. */
+  focusEntity: null,
+};
+
+const COPILOT_HISTORY_LIMIT = 20;
+
 function toggleCopilot() {
   if (appState.copilotOpen) closeCopilot();
   else openCopilot();
@@ -1361,7 +1364,11 @@ function openCopilot() {
   appState.copilotOpen = true;
   document.getElementById('copilot-scrim').classList.add('open');
   document.getElementById('copilot-panel').classList.add('open');
-  setTimeout(() => document.getElementById('copilot-input').focus(), 300);
+  refreshCopilotStatus();
+  setTimeout(() => {
+    const input = document.getElementById('copilot-input');
+    if (input && copilotState.configured) input.focus();
+  }, 300);
 }
 
 function closeCopilot() {
@@ -1370,57 +1377,652 @@ function closeCopilot() {
   document.getElementById('copilot-panel').classList.remove('open');
 }
 
+/* Entry point for the dashboard's "AI Case Summary" button: open the panel and
+   generate immediately, so the summary is one click rather than open-then-ask. */
+function openCopilotSummary(entityId = null) {
+  if (!appState.copilotOpen) openCopilot();
+  else refreshCopilotStatus();
+  requestCopilotSummary(entityId);
+}
+
+function setCopilotFocusEntity(entityId) {
+  copilotState.focusEntity = entityId || null;
+  renderCopilotQuickbar();
+}
+
+/* ── status ─────────────────────────────────────────────────────────────── */
+
+async function refreshCopilotStatus() {
+  try {
+    const res = await fetch(`${API_BASE}/api/copilot/status`);
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    const data = await res.json();
+
+    copilotState.configured = !!data.configured;
+    copilotState.model = data.model || '';
+    copilotState.keySource = data.key_source || null;
+    copilotState.pipelineRun = !!data.pipeline_run;
+    copilotState.suggestions = data.suggestions || [];
+  } catch (e) {
+    copilotState.configured = false;
+    copilotState.model = '';
+    copilotState.keySource = null;
+  }
+  copilotState.statusChecked = true;
+  renderCopilotStatus();
+  renderCopilotQuickbar();
+  renderCopilotEmptyState();
+  syncCopilotSettingsCard();
+}
+
+function renderCopilotStatus() {
+  const dot = document.getElementById('copilot-status-dot');
+  const text = document.getElementById('copilot-status-text');
+  const setup = document.getElementById('copilot-setup');
+  const inputRow = document.querySelector('.copilot-input-row');
+  if (!text) return;
+
+  if (!copilotState.configured) {
+    if (dot) dot.className = 'copilot-status-dot offline';
+    text.textContent = 'AI not connected — API key required';
+    if (setup) setup.style.display = 'block';
+    if (inputRow) inputRow.style.display = 'none';
+    return;
+  }
+
+  if (dot) dot.className = 'copilot-status-dot online';
+  text.textContent = `${copilotState.model} · grounded on this run`;
+  if (setup) setup.style.display = 'none';
+  if (inputRow) inputRow.style.display = 'flex';
+}
+
+function syncCopilotSettingsCard() {
+  const badge = document.getElementById('copilot-settings-badge');
+  const model = document.getElementById('copilot-settings-model');
+  const source = document.getElementById('copilot-settings-source');
+  if (badge) {
+    badge.textContent = copilotState.configured ? 'Connected' : 'Not connected';
+    badge.className = 'copilot-settings-badge ' + (copilotState.configured ? 'ok' : 'off');
+  }
+  if (model) model.textContent = copilotState.configured ? copilotState.model : '—';
+  if (source) {
+    source.textContent = copilotState.configured
+      ? ({ runtime: 'Entered in this session', environment: 'Environment variable', '.env file': '.env file' }[copilotState.keySource] || copilotState.keySource || 'Configured')
+      : 'Not configured';
+  }
+}
+
+/* ── key entry ──────────────────────────────────────────────────────────── */
+
+function handleCopilotKeyEntry(e, fromSettings = false) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    saveCopilotKey(fromSettings);
+  }
+}
+
+async function saveCopilotKey(fromSettings = false) {
+  const inputId = fromSettings ? 'copilot-settings-key' : 'copilot-key-input';
+  const msgId = fromSettings ? 'copilot-settings-msg' : 'copilot-key-msg';
+  const input = document.getElementById(inputId);
+  const msg = document.getElementById(msgId);
+  if (!input) return;
+
+  const key = input.value.trim();
+  if (!key) {
+    if (msg) { msg.className = 'copilot-setup-msg err'; msg.textContent = 'Paste a key first.'; }
+    return;
+  }
+
+  if (msg) { msg.className = 'copilot-setup-msg'; msg.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying the key with Gemini…'; }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/copilot/configure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: key }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || `Request failed (${res.status})`);
+
+    // Clear the field on success — there is no reason for a live credential to
+    // sit in a DOM node once the server has accepted it.
+    input.value = '';
+    if (msg) {
+      msg.className = 'copilot-setup-msg ok';
+      msg.innerHTML = `<i class="fa-solid fa-circle-check"></i> Connected — ${escapeHTML(data.model || 'Gemini')} answered a test call.`;
+    }
+    await refreshCopilotStatus();
+    if (!fromSettings) {
+      const field = document.getElementById('copilot-input');
+      if (field) field.focus();
+    }
+  } catch (err) {
+    if (msg) {
+      msg.className = 'copilot-setup-msg err';
+      msg.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ${escapeHTML(err.message)}`;
+    }
+  }
+}
+
+/* ── quick actions ──────────────────────────────────────────────────────── */
+
+function renderCopilotQuickbar() {
+  const bar = document.getElementById('copilot-quickbar');
+  if (!bar) return;
+
+  if (!copilotState.configured || !copilotState.pipelineRun) {
+    bar.innerHTML = '';
+    bar.style.display = 'none';
+    return;
+  }
+
+  const chips = [];
+  chips.push(`<button class="copilot-chip primary" onclick="requestCopilotSummary()">
+    <i class="fa-solid fa-wand-magic-sparkles"></i> Case summary</button>`);
+
+  if (copilotState.focusEntity) {
+    const eid = copilotState.focusEntity;
+    chips.push(`<button class="copilot-chip" onclick="requestCopilotSummary('${escapeAttr(eid)}')">
+      <i class="fa-solid fa-user-secret"></i> Brief on ${escapeHTML(eid)}</button>`);
+  }
+
+  // Suggestions come from /api/copilot/status and are computed by the backend
+  // from the rules that actually fired — a chip can never offer to walk through
+  // a layering chain on a dataset where LAY-1 never fired.
+  (copilotState.suggestions || []).slice(1).forEach(q => {
+    chips.push(`<button class="copilot-chip" onclick="askCopilot(this.dataset.q)"
+      data-q="${escapeAttr(q)}" title="${escapeAttr(q)}">${escapeHTML(shortenQuestion(q))}</button>`);
+  });
+
+  bar.innerHTML = chips.join('');
+  bar.style.display = 'flex';
+}
+
+function shortenQuestion(q) {
+  const trimmed = q.replace(/[?.]$/, '');
+  return trimmed.length > 42 ? trimmed.slice(0, 40).trim() + '…' : trimmed;
+}
+
+function renderCopilotEmptyState() {
+  const msgs = document.getElementById('copilot-messages');
+  if (!msgs || copilotState.history.length || msgs.querySelector('.copilot-msg')) return;
+
+  if (!copilotState.configured) {
+    msgs.innerHTML = `<div class="copilot-empty">
+      <i class="fa-solid fa-plug-circle-xmark"></i>
+      <div class="copilot-empty-title">AI not connected</div>
+      <div>Add a Gemini API key above to enable the case summary and Q&amp;A.</div>
+    </div>`;
+    return;
+  }
+
+  if (!copilotState.pipelineRun) {
+    msgs.innerHTML = `<div class="copilot-empty">
+      <i class="fa-solid fa-folder-open"></i>
+      <div class="copilot-empty-title">No dataset loaded</div>
+      <div>The copilot only answers from a completed run. Upload Bank, CDR or IPDR
+      files and run the pipeline, or switch to the demo dataset in Settings.</div>
+      <button class="btn btn-primary btn-sm" style="margin-top:12px;" onclick="closeCopilot();openPipeline()">
+        <i class="fa-solid fa-play"></i> Run Pipeline</button>
+    </div>`;
+    return;
+  }
+
+  msgs.innerHTML = `<div class="copilot-empty">
+    <i class="fa-solid fa-microchip"></i>
+    <div class="copilot-empty-title">Ask about this run</div>
+    <div>I read the fused Bank + CDR + IPDR findings for the dataset currently
+    loaded — the rules that fired, the entities they fired on, the evidence rows
+    behind them, and the money flow between them. Nothing else.</div>
+  </div>`;
+}
+
+function clearCopilotEmptyState() {
+  const empty = document.querySelector('#copilot-messages .copilot-empty');
+  if (empty) empty.remove();
+}
+
+function resetCopilotChat() {
+  copilotState.history = [];
+  const msgs = document.getElementById('copilot-messages');
+  if (msgs) msgs.innerHTML = '';
+  renderCopilotEmptyState();
+}
+
+/* ── asking ─────────────────────────────────────────────────────────────── */
+
+function autoGrowCopilotInput(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
 function handleCopilotKey(e) {
-  if (e.key === 'Enter') sendCopilotMessage();
+  // Enter sends; Shift+Enter is a newline, because a question about a chain of
+  // transfers is sometimes worth two lines.
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendCopilotMessage();
+  }
   if (e.key === 'Escape') closeCopilot();
 }
 
 function sendCopilotMessage() {
   const input = document.getElementById('copilot-input');
+  if (!input) return;
   const text = input.value.trim();
   if (!text) return;
   input.value = '';
-
-  appendCopilotMessage('user', text);
-
-  // Typing indicator
-  const typingId = appendTypingIndicator();
-
-  setTimeout(() => {
-    removeTypingIndicator(typingId);
-    appendCopilotMessage('system', buildCopilotReply(text), 'Investigation Copilot');
-  }, 500);
+  autoGrowCopilotInput(input);
+  askCopilot(text);
 }
 
-function appendCopilotMessage(role, text, sender = 'You') {
+function askCopilot(question) {
+  if (!question || copilotState.busy) return;
+  if (!appState.copilotOpen) openCopilot();
+
+  clearCopilotEmptyState();
+  appendCopilotMessage('user', question);
+  copilotState.history.push({ role: 'user', text: question });
+
+  runCopilotRequest('/api/copilot/chat', {
+    question,
+    history: copilotState.history.slice(0, -1).slice(-COPILOT_HISTORY_LIMIT),
+    entity_id: copilotState.focusEntity,
+    stream: true,
+  });
+}
+
+function requestCopilotSummary(entityId = null) {
+  if (copilotState.busy) return;
+  if (!appState.copilotOpen) openCopilot();
+
+  const label = entityId
+    ? `Write an entity brief for ${entityId}.`
+    : 'Summarise this case for a senior officer.';
+
+  clearCopilotEmptyState();
+  appendCopilotMessage('user', label);
+  copilotState.history.push({ role: 'user', text: label });
+
+  runCopilotRequest('/api/copilot/summary', { entity_id: entityId, stream: true });
+}
+
+/* Drives one request end to end: pending bubble → streamed text → final meta,
+   or a visible error. `busy` gates the send button so two overlapping questions
+   cannot interleave their deltas into the same bubble. */
+async function runCopilotRequest(path, body) {
+  copilotState.busy = true;
+  setCopilotBusy(true);
+
+  const bubble = appendCopilotAnswerShell();
+  let raw = '';
+  let meta = null;
+
+  try {
+    await copilotStream(path, body, {
+      onMeta: m => { meta = m; },
+      onDelta: chunk => {
+        raw += chunk;
+        bubble.body.innerHTML = renderCopilotMarkdown(raw);
+        maybeScrollCopilot();
+      },
+    });
+
+    if (!raw.trim()) throw new Error('The copilot returned an empty answer.');
+
+    bubble.body.innerHTML = renderCopilotMarkdown(raw);
+    linkifyEntityIds(bubble.body);
+    finishCopilotAnswer(bubble, raw, meta);
+    copilotState.history.push({ role: 'model', text: raw });
+    if (copilotState.history.length > COPILOT_HISTORY_LIMIT) {
+      copilotState.history = copilotState.history.slice(-COPILOT_HISTORY_LIMIT);
+    }
+  } catch (err) {
+    // A partial answer is kept and labelled rather than discarded — the text
+    // that did arrive was real, and silently dropping it would look like the
+    // copilot answered nothing.
+    bubble.el.classList.add('error');
+    bubble.body.innerHTML = raw
+      ? renderCopilotMarkdown(raw) +
+        `<div class="copilot-error-note"><i class="fa-solid fa-triangle-exclamation"></i>
+         Answer cut short: ${escapeHTML(err.message)}</div>`
+      : `<div class="copilot-error-note"><i class="fa-solid fa-triangle-exclamation"></i>
+         ${escapeHTML(err.message)}</div>`;
+    bubble.meta.textContent = 'Investigation Copilot · failed';
+    bubble.spinner.remove();
+  } finally {
+    copilotState.busy = false;
+    setCopilotBusy(false);
+    maybeScrollCopilot();
+  }
+}
+
+/* SSE reader. Falls back to a plain JSON body if the server answered without
+   streaming, so a proxy that strips text/event-stream degrades to a slower
+   answer instead of no answer. */
+async function copilotStream(path, body, { onMeta, onDelta }) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    let detail = `Request failed (${res.status})`;
+    try {
+      const payload = await res.json();
+      if (payload && payload.detail) detail = payload.detail;
+    } catch (_) { /* non-JSON error body — keep the status line */ }
+    throw new Error(detail);
+  }
+
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('text/event-stream') || !res.body) {
+    const payload = await res.json();
+    if (onMeta) onMeta(payload);
+    onDelta(payload.answer || '');
+    return;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let split;
+    while ((split = buffer.indexOf('\n\n')) >= 0) {
+      const frame = buffer.slice(0, split);
+      buffer = buffer.slice(split + 2);
+
+      let event = 'message';
+      let data = '';
+      frame.split('\n').forEach(line => {
+        if (line.startsWith('event:')) event = line.slice(6).trim();
+        else if (line.startsWith('data:')) data += line.slice(5).trim();
+      });
+      if (!data) continue;
+
+      let payload;
+      try { payload = JSON.parse(data); } catch (_) { continue; }
+
+      if (event === 'meta') { if (onMeta) onMeta(payload); }
+      else if (event === 'delta') onDelta(payload.text || '');
+      else if (event === 'error') throw new Error(payload.message || 'The copilot failed.');
+    }
+  }
+}
+
+function setCopilotBusy(busy) {
+  const btn = document.getElementById('copilot-send-btn');
+  const input = document.getElementById('copilot-input');
+  if (btn) {
+    btn.disabled = busy;
+    btn.innerHTML = busy
+      ? '<i class="fa-solid fa-spinner fa-spin"></i>'
+      : '<i class="fa-solid fa-paper-plane"></i>';
+  }
+  if (input) input.disabled = busy;
+  document.querySelectorAll('.copilot-chip').forEach(chip => { chip.disabled = busy; });
+}
+
+/* ── message rendering ──────────────────────────────────────────────────── */
+
+function appendCopilotMessage(role, text) {
   const msgs = document.getElementById('copilot-messages');
+  if (!msgs) return null;
   const div = document.createElement('div');
   div.className = `copilot-msg ${role}`;
-  const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
   div.innerHTML = `
-    <div class="msg-bubble">${text}</div>
-    <div class="msg-meta">${role === 'user' ? 'You' : sender} · ${now}</div>
+    <div class="msg-bubble">${escapeHTML(text)}</div>
+    <div class="msg-meta">${role === 'user' ? 'You' : 'Investigation Copilot'} · ${copilotClock()}</div>
   `;
   msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
+  maybeScrollCopilot(true);
   return div;
 }
 
-function appendTypingIndicator() {
+/* The answer bubble is created empty with a typing indicator inside it, then
+   filled as deltas arrive — so the panel shows work happening from ~1s in. */
+function appendCopilotAnswerShell() {
   const msgs = document.getElementById('copilot-messages');
-  const id = 'typing-' + Date.now();
-  const div = document.createElement('div');
-  div.className = 'copilot-msg system';
-  div.id = id;
-  div.innerHTML = `<div class="msg-bubble" style="padding:12px 16px;"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>`;
-  msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
-  return id;
+  const el = document.createElement('div');
+  el.className = 'copilot-msg system answer';
+  el.innerHTML = `
+    <div class="msg-bubble">
+      <div class="copilot-answer-body"></div>
+      <div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>
+    </div>
+    <div class="msg-meta">Investigation Copilot · writing…</div>
+  `;
+  msgs.appendChild(el);
+  maybeScrollCopilot(true);
+  return {
+    el,
+    body: el.querySelector('.copilot-answer-body'),
+    spinner: el.querySelector('.typing-indicator'),
+    meta: el.querySelector('.msg-meta'),
+  };
 }
 
-function removeTypingIndicator(id) {
-  const el = document.getElementById(id);
-  if (el) el.remove();
+/* Footer line under a finished answer. It names the model and what the answer
+   was grounded on — which entities had a full dossier attached, and how many
+   flagged entities were in the digest — so the basis is visible without opening
+   /api/copilot/context. */
+function finishCopilotAnswer(bubble, raw, meta) {
+  bubble.spinner.remove();
+
+  const bits = [];
+  if (meta && meta.model) bits.push(escapeHTML(meta.model));
+  if (meta && (meta.entities_attached || []).length) {
+    bits.push(`dossier: ${meta.entities_attached.map(escapeHTML).join(', ')}`);
+  } else if (meta && meta.digest_entities != null) {
+    bits.push(`${meta.digest_entities} flagged entities in context`);
+  }
+  bits.push(copilotClock());
+
+  bubble.meta.innerHTML = `Investigation Copilot · ${bits.join(' · ')}`;
+
+  const actions = document.createElement('div');
+  actions.className = 'copilot-answer-actions';
+  actions.innerHTML = `<button class="copilot-mini-btn" title="Copy this answer">
+    <i class="fa-regular fa-copy"></i> Copy</button>`;
+  actions.querySelector('button').addEventListener('click', ev => {
+    navigator.clipboard.writeText(raw).then(() => {
+      const btn = ev.currentTarget;
+      btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied';
+      setTimeout(() => { btn.innerHTML = '<i class="fa-regular fa-copy"></i> Copy'; }, 1600);
+    });
+  });
+  bubble.el.querySelector('.msg-bubble').appendChild(actions);
+}
+
+function copilotClock() {
+  return new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+}
+
+/* Only auto-scroll when the operator is already at the bottom. Yanking the view
+   down while they are re-reading an earlier answer is worse than a missed line. */
+function maybeScrollCopilot(force = false) {
+  const msgs = document.getElementById('copilot-messages');
+  if (!msgs) return;
+  const nearBottom = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 120;
+  if (force || nearBottom) msgs.scrollTop = msgs.scrollHeight;
+}
+
+/* ── markdown ───────────────────────────────────────────────────────────────
+   A small renderer for the subset Gemini actually emits: headings, bold, italic,
+   inline code, fenced code, lists, pipe tables and rules.
+
+   The input is escaped before a single tag is added, and no path ever
+   concatenates raw model output into HTML — a model that emitted a <script> tag
+   would have it rendered as visible text, which is the only acceptable outcome
+   for third-party text going into innerHTML. */
+
+function renderCopilotMarkdown(src) {
+  const codeBlocks = [];
+  let text = String(src || '');
+
+  // Pull fenced code out first so its contents are never treated as markdown.
+  text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    codeBlocks.push(`<pre class="md-pre"><code>${escapeHTML(code.replace(/\n$/, ''))}</code></pre>`);
+    return `%%CODEBLOCK${codeBlocks.length - 1}%%`;
+  });
+
+  text = escapeHTML(text);
+
+  const lines = text.split('\n');
+  const out = [];
+  let listType = null;
+  let paragraph = [];
+
+  const closeList = () => { if (listType) { out.push(`</${listType}>`); listType = null; } };
+  const flushParagraph = () => {
+    if (paragraph.length) {
+      out.push(`<p>${inlineMarkdown(paragraph.join(' '))}</p>`);
+      paragraph = [];
+    }
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (!trimmed) { flushParagraph(); closeList(); continue; }
+
+    const placeholder = /^%%CODEBLOCK(\d+)%%$/.exec(trimmed);
+    if (placeholder) {
+      flushParagraph(); closeList();
+      out.push(codeBlocks[Number(placeholder[1])]);
+      continue;
+    }
+
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+      flushParagraph(); closeList();
+      out.push('<hr class="md-hr">');
+      continue;
+    }
+
+    const heading = /^(#{1,6})\s+(.*)$/.exec(trimmed);
+    if (heading) {
+      flushParagraph(); closeList();
+      // Levels are compressed to h4/h5: this is a 460px side panel, not a page,
+      // and an h1 in a chat bubble reads as a layout bug.
+      const level = heading[1].length <= 2 ? 4 : 5;
+      out.push(`<h${level} class="md-h">${inlineMarkdown(heading[2])}</h${level}>`);
+      continue;
+    }
+
+    // Pipe table: a header row followed by a |---|---| separator.
+    if (trimmed.startsWith('|') && /^\|?[\s:|-]+\|[\s:|-]*$/.test((lines[i + 1] || '').trim())
+        && (lines[i + 1] || '').includes('-')) {
+      flushParagraph(); closeList();
+      const cells = row => row.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+      const header = cells(trimmed);
+      const body = [];
+      i += 2;
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        body.push(cells(lines[i]));
+        i++;
+      }
+      i--;
+      out.push(
+        '<div class="md-table-wrap"><table class="md-table"><thead><tr>' +
+        header.map(c => `<th>${inlineMarkdown(c)}</th>`).join('') +
+        '</tr></thead><tbody>' +
+        body.map(r => '<tr>' + r.map(c => `<td>${inlineMarkdown(c)}</td>`).join('') + '</tr>').join('') +
+        '</tbody></table></div>'
+      );
+      continue;
+    }
+
+    const bullet = /^[-*•]\s+(.*)$/.exec(trimmed);
+    const numbered = /^(\d+)[.)]\s+(.*)$/.exec(trimmed);
+    if (bullet || numbered) {
+      flushParagraph();
+      const wanted = bullet ? 'ul' : 'ol';
+      if (listType !== wanted) { closeList(); out.push(`<${wanted} class="md-list">`); listType = wanted; }
+      // Indented continuations of a bullet are folded into it rather than
+      // starting a nested list — nesting in a narrow panel costs more width
+      // than the hierarchy is worth.
+      out.push(`<li>${inlineMarkdown(bullet ? bullet[1] : numbered[2])}</li>`);
+      continue;
+    }
+
+    if (listType && /^\s{2,}\S/.test(line)) {
+      // Continuation line inside the current list item.
+      const last = out.length - 1;
+      if (out[last] && out[last].endsWith('</li>')) {
+        out[last] = out[last].slice(0, -5) + ' ' + inlineMarkdown(trimmed) + '</li>';
+        continue;
+      }
+    }
+
+    closeList();
+    paragraph.push(trimmed);
+  }
+
+  flushParagraph();
+  closeList();
+  return out.join('');
+}
+
+function inlineMarkdown(text) {
+  return text
+    .replace(/`([^`]+)`/g, '<code class="md-code">$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+    // Single-asterisk italics, but not a bare "*" and not inside a word — rule
+    // ids like TCS-1 and amounts must survive untouched.
+    .replace(/(^|[\s(])\*([^*\s][^*]*)\*(?=$|[\s.,;:)])/g, '$1<em>$2</em>')
+    // Markdown links: label kept, target shown, nothing navigable injected.
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '$1 ($2)');
+}
+
+/* Entity ids in an answer become clickable, opening that entity's unified
+   timeline. Done by walking text nodes after rendering rather than by a regex
+   over the HTML string, so an id appearing inside an attribute cannot be
+   rewritten into broken markup. */
+function linkifyEntityIds(root) {
+  if (!root || typeof openEntityTimeline !== 'function') return;
+  const pattern = /\bENT[_-]\d{3,6}\b/g;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const targets = [];
+
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (node.parentElement.closest('code, pre, .copilot-entity-link')) continue;
+    if (pattern.test(node.nodeValue)) targets.push(node);
+    pattern.lastIndex = 0;
+  }
+
+  targets.forEach(node => {
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    let match;
+    pattern.lastIndex = 0;
+    while ((match = pattern.exec(node.nodeValue)) !== null) {
+      if (match.index > last) {
+        frag.appendChild(document.createTextNode(node.nodeValue.slice(last, match.index)));
+      }
+      const id = match[0].replace('-', '_');
+      const link = document.createElement('button');
+      link.className = 'copilot-entity-link';
+      link.textContent = match[0];
+      link.title = `Open the unified timeline for ${id}`;
+      link.addEventListener('click', () => openEntityTimeline(id));
+      frag.appendChild(link);
+      last = match.index + match[0].length;
+    }
+    if (last < node.nodeValue.length) {
+      frag.appendChild(document.createTextNode(node.nodeValue.slice(last)));
+    }
+    node.parentNode.replaceChild(frag, node);
+  });
 }
 
 /* ── KEYBOARD SHORTCUTS ─────────────────────────────────────────── */
@@ -1709,6 +2311,12 @@ async function openPipeline() {
   await fetchEvidenceFiles();
   await fetchDecisionTrace();
   await fetchVerificationSummary();
+  // A new run means new findings, so the copilot's suggested questions and its
+  // "no dataset loaded" state are both stale. Any conversation about the previous
+  // dataset is discarded rather than carried over — follow-up questions answered
+  // against a different case is the worst failure this feature could have.
+  resetCopilotChat();
+  await refreshCopilotStatus();
 
   // Auto-close modal after 700ms and transition to Dashboard
   setTimeout(() => {
@@ -1810,6 +2418,8 @@ const timelineState = {
 function openEntityTimeline(entityId) {
   timelineState.entityId = entityId;
   timelineState.payload = null;
+  // Pin it for the copilot too, so "why did this one fire?" needs no id typed.
+  setCopilotFocusEntity(entityId);
   switchView('timeline');
 }
 
@@ -2961,6 +3571,9 @@ function populateInspector(node) {
      the rules that actually fired, and the value that moved through them. Render
      that directly rather than looking the id up in a mock table. */
   if (node && node.risk_tier && node.entity_id) {
+    // Selecting a node in the graph is also what the copilot treats as "the
+    // entity I'm looking at".
+    setCopilotFocusEntity(node.entity_id);
     const tier = node.risk_tier;
     const tierColor = tier === 'CRITICAL' ? 'var(--accent-danger)'
       : tier === 'HIGH' ? 'var(--accent-warning)'
@@ -2998,6 +3611,10 @@ function populateInspector(node) {
           ? '<div style="font-size:11px;color:var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> Loading evidence rows…</div>'
           : ''}
       </div>
+      <button class="btn btn-ghost btn-sm" style="margin-top:12px;width:100%;justify-content:center;"
+              onclick="openCopilotSummary('${escapeAttr(node.entity_id)}')">
+        <i class="fa-solid fa-robot"></i> Ask Copilot about this entity
+      </button>
     `;
     if (rules.length) loadInspectorEvidence(node.entity_id);
     return;
@@ -3197,6 +3814,11 @@ function initModeToggle() {
       populateReports();
       populateRuleGrid();
       fetchAPIStatus();
+      // The copilot's grounding just went away with the run — drop the
+      // conversation and let the panel fall back to its "no dataset" state.
+      copilotState.focusEntity = null;
+      resetCopilotChat();
+      refreshCopilotStatus();
       label.textContent += ' · run the pipeline to load it';
     } catch (e) {
       console.warn('mode switch failed:', e);

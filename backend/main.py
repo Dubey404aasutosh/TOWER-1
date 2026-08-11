@@ -14,7 +14,8 @@ import networkx as nx
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from pydantic import BaseModel
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -27,6 +28,12 @@ sys.path.insert(0, str(BACKEND_DIR))
 # Import E-Rakshak pipeline methods
 from pipeline import run_pipeline, sha256_file
 from graph.map_builder import CELL_TOWERS
+
+# Investigation Copilot — the LLM layer. Imported at module load so a missing
+# dependency fails loudly at startup rather than on the first question asked.
+from copilot import CopilotService, GeminiClient, GeminiError, GeminiNotConfigured
+from copilot import context as copilot_context
+from copilot.service import suggested_questions
 
 app = FastAPI(title="E-Rakshak API", version="2.0.0")
 
@@ -503,8 +510,7 @@ async def upload_files(files: List[UploadFile] = File(...)):
     }
 
 
-@app.get("/api/evidence-files")
-def get_evidence_files():
+def evidence_file_records():
     """
     Chain-of-custody listing for the currently active dataset.
 
@@ -512,6 +518,10 @@ def get_evidence_files():
     SHA-256 recomputed now with hashlib, and parsed/skipped row counts taken from
     the last pipeline run. If a file has not been ingested yet, its row counts are
     returned as null rather than filled in with a plausible-looking number.
+
+    Split out of the endpoint so the copilot can ground provenance answers on the
+    same records the Evidence Vault renders, rather than on a second listing that
+    could drift from it.
     """
     active_dir = UPLOAD_DIR if STATE["data_mode"] == "upload" else RAW_DIR
 
@@ -555,6 +565,13 @@ def get_evidence_files():
                 "error": rec.get("error"),
             })
 
+    return files
+
+
+@app.get("/api/evidence-files")
+def get_evidence_files():
+    """Evidence Vault listing — see evidence_file_records() for how each field is measured."""
+    files = evidence_file_records()
     return JSONResponse(content=clean_serializable({
         "data_mode": STATE["data_mode"],
         "pipeline_run": STATE["pipeline_run"],
@@ -1206,6 +1223,261 @@ def download_str_report(entity_id: str):
         filename=f"str_report_{entity_id}.docx",
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# INVESTIGATION COPILOT
+#
+# A Gemini-backed assistant over the *current run only*. Two features: a case
+# summary and free-text Q&A. Both are grounded on a digest built by
+# copilot/context.py from STATE["last_results"] — the same object /api/results
+# serialises — so the copilot and the dashboard cannot disagree about what was
+# found.
+#
+# Three things are deliberately true of every endpoint below:
+#
+#   * No run, no answer. If the pipeline has not been executed these return 409,
+#     exactly as /api/results does. A copilot that will happily discuss a case
+#     with no dataset loaded is generating fiction.
+#   * The API key is never persisted by this server. It is read from the
+#     environment or a .env file, or held in memory after being pasted into
+#     Settings — that runtime key dies with the process.
+#   * The grounding is inspectable. /api/copilot/context returns the exact digest
+#     the model was given, so any answer can be checked against its inputs.
+# ═══════════════════════════════════════════════════════════════════════════
+
+GEMINI = GeminiClient()
+COPILOT = CopilotService(GEMINI)
+
+
+class CopilotConfigureRequest(BaseModel):
+    api_key: str
+    model: str | None = None
+
+
+class CopilotSummaryRequest(BaseModel):
+    entity_id: str | None = None
+    stream: bool = True
+
+
+class CopilotChatRequest(BaseModel):
+    question: str
+    history: list | None = None
+    entity_id: str | None = None
+    stream: bool = True
+
+
+def _require_run():
+    """The loaded run, or the same 409 /api/results raises when there isn't one."""
+    if not STATE["pipeline_run"] or STATE["last_results"] is None:
+        raise HTTPException(
+            status_code=409,
+            detail="No analysis has been run yet. Upload files and run the pipeline "
+                   "before asking the copilot about the case."
+        )
+    return STATE["last_results"]
+
+
+def _copilot_status_payload():
+    return {
+        "configured": GEMINI.configured,
+        "key_source": GEMINI.key_source(),
+        "key_fingerprint": GEMINI.key_fingerprint(),
+        "model": GEMINI.model,
+        "provider": "Google Gemini",
+        "pipeline_run": STATE["pipeline_run"],
+        "data_mode": STATE["data_mode"],
+        "suggestions": suggested_questions(STATE["last_results"]),
+    }
+
+
+@app.get("/api/copilot/status")
+def copilot_status(verify: bool = False):
+    """
+    Whether the copilot can answer, and why not if it cannot.
+
+    `verify=true` spends one real (tiny) API call to prove the key works. The UI
+    polls this endpoint without verification on open and verifies only after a key
+    is entered — a round-trip on every panel open would burn free-tier quota to
+    tell the operator something the previous call already established.
+    """
+    payload = _copilot_status_payload()
+    if verify and GEMINI.configured:
+        try:
+            payload["model"] = GEMINI.verify()
+            payload["verified"] = True
+        except GeminiError as e:
+            payload["verified"] = False
+            payload["error"] = e.message
+    return payload
+
+
+@app.post("/api/copilot/configure")
+def copilot_configure(payload: CopilotConfigureRequest):
+    """
+    Accept a Gemini API key for this process.
+
+    Held in memory only — never written to .env, never logged, never returned. The
+    supported way to configure the key is the environment; this exists so the
+    feature can be demonstrated on a machine where setting one is inconvenient.
+    """
+    key = (payload.api_key or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="No API key supplied.")
+
+    previous = GEMINI._runtime_key
+    if payload.model:
+        GEMINI._preferred_model = payload.model.strip()
+    GEMINI.set_api_key(key)
+
+    try:
+        model = GEMINI.verify()
+    except GeminiError as e:
+        # Reject rather than store: a key that cannot answer should not leave the
+        # panel reporting "connected" until the operator's first question fails.
+        GEMINI.set_api_key(previous)
+        raise HTTPException(status_code=e.status, detail=e.message)
+
+    logger.info(f"Copilot configured with a runtime Gemini key (model={model})")
+    return {"status": "success", **_copilot_status_payload(), "verified": True}
+
+
+@app.get("/api/copilot/context")
+def copilot_context_dump(entity_id: str = None):
+    """
+    The exact facts the copilot is grounded on — nothing generated.
+
+    This is the audit surface for the feature. If an answer is disputed, this
+    endpoint shows precisely what the model was and was not told.
+    """
+    results = _require_run()
+    digest = copilot_context.build_run_digest(
+        results,
+        data_mode=STATE["data_mode"],
+        evidence_files=evidence_file_records(),
+    )
+    payload = {"digest": digest, "rendered": copilot_context.render_digest(digest)}
+    if entity_id:
+        dossier = copilot_context.build_entity_dossier(results, entity_id)
+        if dossier is None:
+            raise HTTPException(status_code=404, detail=f"Entity {entity_id} not in this run.")
+        payload["dossier"] = dossier
+        payload["rendered"] += "\n" + copilot_context.render_dossier(dossier)
+    return JSONResponse(content=clean_serializable(payload))
+
+
+def _sse(event, data):
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _stream_answer(system_instruction, contents, meta, max_output_tokens):
+    """
+    SSE generator: meta first, then text deltas, then done — or an error event.
+
+    Errors are streamed rather than raised because the HTTP status is long gone by
+    the time Gemini fails mid-answer. The client renders an `error` event as a
+    visible failure notice, so a truncated stream can never be mistaken for a
+    complete answer.
+    """
+    yield _sse("meta", {**meta, "model": GEMINI.model})
+    try:
+        for chunk in COPILOT.run_stream(system_instruction, contents,
+                                        max_output_tokens=max_output_tokens):
+            yield _sse("delta", {"text": chunk})
+    except GeminiError as e:
+        yield _sse("error", {"message": e.message, "status": e.status})
+        return
+    except Exception as e:  # pragma: no cover - defensive
+        logger.error(f"Copilot stream failed: {e}", exc_info=True)
+        yield _sse("error", {"message": f"Copilot failed: {e}", "status": 500})
+        return
+    yield _sse("done", {"model": GEMINI.model})
+
+
+SSE_HEADERS = {
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    # Without this an intervening proxy can hold the whole stream and deliver it
+    # in one lump, which defeats the point of streaming it at all.
+    "X-Accel-Buffering": "no",
+}
+
+
+@app.post("/api/copilot/summary")
+def copilot_summary(payload: CopilotSummaryRequest):
+    """
+    AI case summary for the loaded run — or for one entity when entity_id is given.
+
+    This is a briefing aid, not a deliverable. The forensic report and the STR that
+    go into a case file are still written by report/forensic_report.py directly from
+    the pipeline output; nothing generated here reaches them.
+    """
+    results = _require_run()
+    if not GEMINI.configured:
+        raise HTTPException(status_code=503, detail=str(GeminiNotConfigured()))
+
+    try:
+        system_instruction, contents, meta = COPILOT.summary_request(
+            results,
+            data_mode=STATE["data_mode"],
+            evidence_files=evidence_file_records(),
+            focus_entity=payload.entity_id,
+        )
+    except GeminiError as e:
+        raise HTTPException(status_code=e.status, detail=e.message)
+
+    meta["kind"] = "summary"
+    if payload.stream:
+        return StreamingResponse(
+            _stream_answer(system_instruction, contents, meta, 3072),
+            media_type="text/event-stream", headers=SSE_HEADERS,
+        )
+
+    try:
+        answer = COPILOT.run(system_instruction, contents, max_output_tokens=3072)
+    except GeminiError as e:
+        raise HTTPException(status_code=e.status, detail=e.message)
+    return {"answer": answer, "model": GEMINI.model, **meta}
+
+
+@app.post("/api/copilot/chat")
+def copilot_chat(payload: CopilotChatRequest):
+    """
+    Free-text Q&A over the loaded run.
+
+    `history` is the conversation so far, sent by the client — this server keeps no
+    session state. `entity_id` pins the entity the operator currently has open so
+    "why did this one fire?" resolves without them retyping the id; any entity the
+    question itself names is attached on top of that.
+    """
+    results = _require_run()
+    if not GEMINI.configured:
+        raise HTTPException(status_code=503, detail=str(GeminiNotConfigured()))
+
+    try:
+        system_instruction, contents, meta = COPILOT.chat_request(
+            payload.question,
+            history=payload.history,
+            results=results,
+            data_mode=STATE["data_mode"],
+            evidence_files=evidence_file_records(),
+            focus_entity=payload.entity_id,
+        )
+    except GeminiError as e:
+        raise HTTPException(status_code=e.status, detail=e.message)
+
+    meta["kind"] = "chat"
+    if payload.stream:
+        return StreamingResponse(
+            _stream_answer(system_instruction, contents, meta, 2048),
+            media_type="text/event-stream", headers=SSE_HEADERS,
+        )
+
+    try:
+        answer = COPILOT.run(system_instruction, contents, max_output_tokens=2048)
+    except GeminiError as e:
+        raise HTTPException(status_code=e.status, detail=e.message)
+    return {"answer": answer, "model": GEMINI.model, **meta}
 
 
 # Mount the frontend static files at the root
