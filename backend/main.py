@@ -938,7 +938,7 @@ def get_entity_trace(entity_id: str):
 
 
 @app.get("/api/entity/{entity_id}/timeline")
-def get_entity_timeline(entity_id: str):
+def get_entity_timeline(entity_id: str, window_minutes: int = None):
     """
     Unified evidentiary timeline for one entity (FR-II.a).
 
@@ -948,6 +948,14 @@ def get_entity_timeline(entity_id: str):
 
     This reads the same `build_timeline_payload` the forensic report renders its
     chart from, so the screen and the .docx exhibit cannot disagree.
+
+    `window_minutes` re-computes the correlation window W for **this entity only**,
+    so W can be explored interactively (`correlation.md` asks for W to be exposed in
+    the UI). Re-joining ~50 events is milliseconds, against ~15s for a full
+    re-analysis. The response reports both the requested W and the W the pipeline
+    actually ran with: widening W here previews which transfers *would* correlate,
+    it does not re-fire the rules, and the payload says so rather than letting the
+    screen imply a detection that never happened.
     """
     if not STATE["pipeline_run"] or STATE["last_results"] is None:
         raise HTTPException(status_code=400, detail="Pipeline has not been executed yet. Run the pipeline first.")
@@ -964,14 +972,35 @@ def get_entity_timeline(entity_id: str):
         raise HTTPException(status_code=404, detail=f"Entity {entity_id} not found in pipeline results.")
 
     score_info = scored_entities.get(target_eid, {})
+    pipeline_window = int(results.get("window_minutes", 10) or 10)
 
-    from correlation.temporal_join import build_timeline_payload
+    from correlation.temporal_join import build_timeline_payload, temporal_join
+
+    all_events_df = results.get("all_events_df")
+    enriched = results.get("enriched_txns")
+    effective_window = pipeline_window
+
+    if window_minutes is not None:
+        requested = max(1, min(int(window_minutes), 24 * 60))
+        if requested != pipeline_window:
+            effective_window = requested
+            # Re-join this entity's own events at the requested W. Everything else
+            # in the response — tiers, rules, evidence — still reflects the run.
+            try:
+                mine = all_events_df[all_events_df["entity_id"] == target_eid]
+                if not mine.empty:
+                    enriched = temporal_join(mine.to_dict("records"),
+                                             window_minutes=requested)
+            except Exception as e:
+                logger.warning(f"Timeline re-join at W={requested} failed: {e}")
+                effective_window = pipeline_window
+                enriched = results.get("enriched_txns")
 
     payload = build_timeline_payload(
-        results.get("all_events_df"),
+        all_events_df,
         target_eid,
-        enriched_txns=results.get("enriched_txns"),
-        window_minutes=results.get("window_minutes", 10),
+        enriched_txns=enriched,
+        window_minutes=effective_window,
         rule_evidence=score_info.get("evidence", {}),
     )
     payload.update({
@@ -980,6 +1009,10 @@ def get_entity_timeline(entity_id: str):
         "rules_fired": score_info.get("rules_fired", []),
         "rule_severities": score_info.get("rule_severities", {}),
         "explanations": score_info.get("explanations", {}),
+        # The W the rules actually fired at. When this differs from window_minutes
+        # above, the UI labels the correlation bands as a preview.
+        "pipeline_window_minutes": pipeline_window,
+        "is_preview": effective_window != pipeline_window,
     })
     return JSONResponse(content=clean_serializable(payload))
 
