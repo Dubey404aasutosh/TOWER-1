@@ -88,10 +88,23 @@ def compute_ml_anomaly(all_events_df, entities):
     features = []
     entity_ids = []
 
-    for entity_id in entities.keys():
-        entity_events = all_events_df[all_events_df['entity_id'] == entity_id]
+    if all_events_df is None or all_events_df.empty or 'entity_id' not in all_events_df.columns:
+        return {eid: False for eid in entities.keys()}
 
-        if entity_events.empty:
+    # Partition the frame ONCE instead of re-scanning all 2,400 rows for each of the
+    # 1,368 entities. The old `all_events_df[all_events_df['entity_id'] == eid]`
+    # inside this loop is a full pass per entity — quadratic in the dataset, and the
+    # dominant cost of this step. run_all_rules already solved the same problem the
+    # same way; this applies the identical pattern.
+    events_by_entity = dict(tuple(all_events_df.groupby('entity_id', sort=False)))
+
+    for entity_id in entities.keys():
+        entity_events = events_by_entity.get(entity_id)
+
+        # ~1,200 of the resolved entities are passthrough counterparties with no
+        # events of their own. They contribute nothing to the feature matrix, so
+        # skipping them before any pandas work is the other half of the win.
+        if entity_events is None or entity_events.empty:
             continue
 
         txns = entity_events[entity_events['event_type'] == 'transaction']
