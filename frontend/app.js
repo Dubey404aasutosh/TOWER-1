@@ -1735,6 +1735,16 @@ function initTimeline() {
     select.addEventListener('change', e => loadTimeline(e.target.value));
   }
 
+  const wSelect = document.getElementById('timeline-window-select');
+  if (wSelect && !wSelect._wired) {
+    wSelect._wired = true;
+    wSelect.addEventListener('change', e => {
+      appState.windowMinutes = Number(e.target.value) || 10;
+      loadTimeline(timelineState.entityId);
+    });
+  }
+  if (wSelect) wSelect.value = String(appState.windowMinutes || 10);
+
   if (!timelineState.payload || timelineState.entityId !== select.value) {
     loadTimeline(select.value);
   } else {
