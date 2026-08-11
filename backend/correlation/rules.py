@@ -826,9 +826,14 @@ def check_mul1(entity_id, all_events_df, dormancy_days=30, outflow_pct=0.80):
         credit_amount = credit_row['amount']
         credit_time = credit_row['timestamp']
 
-        # Check if this is a "large" inflow (> 100k or > 5x the entity's typical credit)
-        median_credit = credits['amount'].median()
-        if credit_amount < 100000 and credit_amount < median_credit * 3:
+        # A mule inflow has to actually be large. The old test was
+        #   credit_amount < 100000 AND credit_amount < median_credit * 3
+        # so a credit under ₹1L still qualified whenever it was merely 3x this
+        # account's median — which is true of an ordinary salary landing in an
+        # account that otherwise sees small transfers. That relative branch is what
+        # flagged ENT_0272 on a ~₹70k credit. An absolute floor replaces it: below
+        # this, "sudden large inflow" is not a description of what happened.
+        if credit_amount < MUL1_MIN_INFLOW:
             continue
 
         # Check dormancy: look for activity in the 30 days BEFORE this credit
@@ -836,11 +841,12 @@ def check_mul1(entity_id, all_events_df, dormancy_days=30, outflow_pct=0.80):
         prior_activity = entity_txns[
             (entity_txns['timestamp'] >= dormancy_start) &
             (entity_txns['timestamp'] < credit_time) &
-            (entity_txns['amount'].abs() > 10)  # Ignore micro transactions < INR 10
+            (entity_txns['amount'].abs() > MUL1_MICRO_TXN)
         ]
 
-        if len(prior_activity) > 2:
-            # Not dormant enough
+        # "Dormant" has to mean dormant. The old allowance let an account run two
+        # real transactions inside the dormancy window and still be called inactive.
+        if len(prior_activity) > MUL1_MAX_PRIOR_TXNS:
             continue
 
         # Check rapid outflow after the credit
